@@ -11,7 +11,11 @@ import javax.security.auth.login.LoginException;
  */
 public class MovieBot extends ListenerAdapter
 {
+
     public static void main(String[] args) throws LoginException {
+
+        System.out.println("Working dir: " + System.getProperty("user.dir"));
+        System.out.println(".env exists: " + new java.io.File(".env").exists());
 
         // Load .env
         String token = System.getenv("DISCORD_TOKEN");

@@ -16,7 +16,7 @@ import javax.security.auth.login.LoginException;
 public class MovieBot extends ListenerAdapter
 {
     private static MovieStorage storage;
-
+    private static TMDb tmdb;
 
     public static void main(String[] args) throws LoginException {
 
@@ -27,6 +27,13 @@ public class MovieBot extends ListenerAdapter
             return;
         }
 
+        String tmdbKey = System.getenv("TMDB_KEY");
+        if (tmdbKey == null) {
+            System.out.println("ERROR: TMDB_KEY not found in .env");
+            return;
+        }
+
+        tmdb = new TMDb(tmdbKey);
         storage = new MovieStorage();
 
         // Build JDA bot
@@ -56,6 +63,10 @@ public class MovieBot extends ListenerAdapter
 
     public static MovieStorage getStorage(){
         return  storage;
+    }
+
+    public static TMDb getTmdb(){
+        return tmdb;
     }
 
     @Override

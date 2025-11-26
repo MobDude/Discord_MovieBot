@@ -1,0 +1,10 @@
+# Environment / secrets
+.env
+movies.json
+
+# Maven target folder
+/target
+
+# IntelliJ project files
+*.iml
+.idea/

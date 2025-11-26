@@ -36,4 +36,24 @@ public class TMDb {
             return new JsonArray();
         }
     }
+
+    public JsonObject getMovieById(String id) {
+        try {
+            String urlStr = "https://api.themoviedb.org/3/movie/" + id +
+                    "?api_key=" + apiKey;
+
+            URL url = new URL(urlStr);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+
+            return JsonParser.parseReader(
+                    new InputStreamReader(conn.getInputStream())
+            ).getAsJsonObject();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
 }

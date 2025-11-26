@@ -11,19 +11,19 @@ import javax.security.auth.login.LoginException;
  */
 public class MovieBot extends ListenerAdapter
 {
+    private static MovieStorage storage;
+
 
     public static void main(String[] args) throws LoginException {
 
-        System.out.println("Working dir: " + System.getProperty("user.dir"));
-        System.out.println(".env exists: " + new java.io.File(".env").exists());
-
         // Load .env
         String token = System.getenv("DISCORD_TOKEN");
-
         if (token == null) {
             System.out.println("ERROR: DISCORD_TOKEN not found in .env");
             return;
         }
+
+        storage = new MovieStorage();
 
         // Build JDA bot
         JDABuilder.createDefault(token)
@@ -32,6 +32,10 @@ public class MovieBot extends ListenerAdapter
                 .build();
 
         System.out.println("MovieBot is now running!");
+    }
+
+    public static MovieStorage getStorage(){
+        return  storage;
     }
 
 }

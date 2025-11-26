@@ -23,13 +23,12 @@
       <version>2.10.1</version>
     </dependency>
 
-    <!--
     <dependency>
-      <groupId>io.github.cdimascio</groupId>
-      <artifactId>java-dotenv</artifactId>
-      <version>6.3.1</version>
+      <groupId>me.paulschwarz</groupId>
+      <artifactId>spring-dotenv</artifactId>
+      <version>4.0.0</version>
     </dependency>
-    -->
+
 
   </dependencies>
 

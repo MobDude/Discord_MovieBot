@@ -12,6 +12,10 @@ import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import javax.security.auth.login.LoginException;
 import net.dv8tion.jda.api.components.actionrow.ActionRow;
+import net.dv8tion.jda.api.components.buttons.Button;
+import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.entities.MessageEmbed;
+import java.util.List;
 
 /**
  * Class to load the token and API key, initialize JDA, register commands, and handle events
@@ -121,10 +125,8 @@ public class MovieBot extends ListenerAdapter
 
         }
 
-        event.deferReply().queue(hook -> {
-            // MANY RESULTS → show dropdown
-            sendMovieSelectionMenu(event, results, name);
-        });
+        sendMovieSelectionMenu(event, results, name);
+
 
     }
 
@@ -132,8 +134,22 @@ public class MovieBot extends ListenerAdapter
         event.reply("Not Implemented yet");
     }
 
-    private void handleMovieList(SlashCommandInteractionEvent event){
-        event.reply("Not Implemented yet");
+    private void handleMovieList(SlashCommandInteractionEvent event) {
+        List<Movie> movies = MovieBot.getStorage().getMovies();
+
+        if (movies.isEmpty()) {
+            event.reply("The movie list is currently empty.").queue();
+            return;
+        }
+
+        int page = 0; // always start at page 0
+
+        var embed = buildMovieListEmbed(page);
+        var buttons = buildPageButtons(page);
+
+        event.replyEmbeds(embed)
+                .addComponents(ActionRow.of(buttons.get(0), buttons.get(1)))
+                .queue();
     }
 
     private void sendMovieSelectionMenu(SlashCommandInteractionEvent event, JsonArray results, String query){
@@ -190,6 +206,84 @@ public class MovieBot extends ListenerAdapter
 
     public static JsonObject fetchMovieById(String id) {
         return tmdb.getMovieById(id);
+    }
+
+    // Build a MessageEmbed for a page (5 movies per page)
+    private MessageEmbed buildMovieListEmbed(int page) {
+        var movies = MovieBot.getStorage().getMovies();
+        final int pageSize = 5;
+        int totalPages = Math.max(1, (int) Math.ceil(movies.size() / (double) pageSize));
+
+        int start = page * pageSize;
+        int end = Math.min(start + pageSize, movies.size());
+
+        EmbedBuilder eb = new EmbedBuilder();
+        eb.setTitle("🎬 Movie List");
+        eb.setColor(0x570000);
+        eb.setFooter("Page " + (page + 1) + " of " + totalPages);
+
+        if (movies.isEmpty()) {
+            eb.setDescription("The list is empty.");
+            return eb.build();
+        }
+
+        for (int i = start; i < end; i++) {
+            Movie m = movies.get(i);
+            String heading = (i + 1) + ". " + m.getTitle();
+            StringBuilder value = new StringBuilder();
+            value.append("Year: ").append(m.getYear());
+            if (m.getPosterURL() != null && !m.getPosterURL().isBlank()) {
+                value.append("\n[Poster](").append(m.getPosterURL()).append(")");
+                // you could also set the thumbnail to the first movie on page if you like
+            }
+            eb.addField(heading, value.toString(), false);
+        }
+
+        return eb.build();
+    }
+
+    // Build prev/next buttons for a given current page. Returns List<Button>
+    private List<Button> buildPageButtons(int currentPage) {
+        var movies = MovieBot.getStorage().getMovies();
+        final int pageSize = 5;
+        int totalPages = Math.max(1, (int) Math.ceil(movies.size() / (double) pageSize));
+
+        Button prev = Button.primary("movie_page_prev_" + currentPage, "◀ Previous")
+                .withDisabled(currentPage == 0);
+
+        Button next = Button.primary("movie_page_next_" + currentPage, "Next ▶")
+                .withDisabled(currentPage >= totalPages - 1);
+
+        return List.of(prev, next);
+    }
+
+    @Override
+    public void onButtonInteraction(
+            net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event) {
+
+        String id = event.getComponentId();
+        if (!id.startsWith("movie_page_")) return;
+
+        // Extract type and page:
+        // movie_page_prev_2  → ["movie","page","prev","2"]
+        String[] parts = id.split("_");
+        String action = parts[2];         // "prev" or "next"
+        int currentPage = Integer.parseInt(parts[3]);
+
+        var movies = MovieBot.getStorage().getMovies();
+        final int pageSize = 5;
+        int totalPages = (int) Math.ceil(movies.size() / (double) pageSize);
+
+        int newPage = action.equals("prev")
+                ? Math.max(0, currentPage - 1)
+                : Math.min(totalPages - 1, currentPage + 1);
+
+        var embed = buildMovieListEmbed(newPage);
+        var buttons = buildPageButtons(newPage);
+
+        event.editMessageEmbeds(embed)
+                .setComponents(ActionRow.of(buttons.get(0), buttons.get(1)))
+                .queue();
     }
 
 

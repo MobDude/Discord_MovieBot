@@ -15,6 +15,8 @@ import net.dv8tion.jda.api.components.actionrow.ActionRow;
 import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.MessageEmbed;
+
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -22,8 +24,13 @@ import java.util.List;
  */
 public class MovieBot extends ListenerAdapter
 {
-    private static MovieStorage storage;
-    private static TMDb tmdb;
+    private final MovieStorage storage;
+    private final TMDb tmdb;
+
+    public MovieBot(String tmdbKey) {
+        this.tmdb = new TMDb(tmdbKey);
+        this.storage = new MovieStorage();
+    }
 
     public static void main(String[] args) throws LoginException {
 
@@ -40,13 +47,11 @@ public class MovieBot extends ListenerAdapter
             return;
         }
 
-        tmdb = new TMDb(tmdbKey);
-        storage = new MovieStorage();
 
         // Build JDA bot
         JDABuilder.createDefault(token)
                 .setActivity(Activity.watching("Movie Nights"))
-                .addEventListeners(new MovieBot())
+                .addEventListeners(new MovieBot(tmdbKey))
                 .build()
                 .updateCommands()
                 .addCommands(
@@ -68,13 +73,6 @@ public class MovieBot extends ListenerAdapter
         System.out.println("MovieBot is now running!");
     }
 
-    public static MovieStorage getStorage(){
-        return  storage;
-    }
-
-    public static TMDb getTmdb(){
-        return tmdb;
-    }
 
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event){
@@ -99,7 +97,7 @@ public class MovieBot extends ListenerAdapter
 
         event.deferReply().queue();
 
-        var results = MovieBot.getTmdb().searchMovies(name, year);
+        JsonArray results = tmdb.searchMovies(name, year);
 
         if (results.size() == 0){
             event.getHook().sendMessage("No movies found with that name.").queue();
@@ -118,7 +116,7 @@ public class MovieBot extends ListenerAdapter
                     "https://image.tmdb.org/t/p/w500" + m.get("poster_path").getAsString();
 
             Movie movie = new Movie(title, releaseYear, poster);
-            MovieBot.getStorage().addMovie(movie);
+            storage.addMovie(movie);
 
             event.getHook().sendMessage("Added **" + title + "** (" + releaseYear + ")").queue();
             return;
@@ -131,11 +129,56 @@ public class MovieBot extends ListenerAdapter
     }
 
     private void handleRemoveMovie(SlashCommandInteractionEvent event){
-        event.reply("Not Implemented yet");
+        String query = event.getOption("query").getAsString();
+        List<Movie> allMovies = storage.getMovies();
+
+        event.deferReply().queue(); // ACKNOWLEDGE ONCE
+
+        // Search for movies containing the query (case-insensitive)
+        List<Integer> matchingIndexes = new ArrayList<>();
+        for (int i = 0; i < allMovies.size(); i++) {
+            Movie m = allMovies.get(i);
+            if (m.getTitle().toLowerCase().contains(query.toLowerCase())) {
+                matchingIndexes.add(i);
+            }
+        }
+
+        if (matchingIndexes.isEmpty()) {
+            event.getHook().sendMessage("I couldn't find any movies matching **" + query + "**.").queue();
+            return;
+        }
+
+        // If only one match → delete immediately
+        if (matchingIndexes.size() == 1) {
+            Movie movie = allMovies.get(matchingIndexes.get(0));
+            storage.removeMovie(movie);
+
+            event.getHook()
+                    .sendMessage("🗑️ Removed **" + movie.getTitle() + "** from the movie list.")
+                    .queue();
+            return;
+        }
+
+        // MULTIPLE MATCHES → build dropdown
+        StringSelectMenu.Builder menu = StringSelectMenu.create("remove-movie-select");
+
+        for (int index : matchingIndexes) {
+            Movie m = allMovies.get(index);
+            menu.addOption(
+                    m.getTitle() + " (" + m.getYear() + ")",
+                    "remove:" + index
+            );
+        }
+
+
+        event.getHook()
+                .editOriginal("I found multiple movies:")
+                .setComponents(ActionRow.of(menu.build()))
+                .queue();
     }
 
     private void handleMovieList(SlashCommandInteractionEvent event) {
-        List<Movie> movies = MovieBot.getStorage().getMovies();
+        List<Movie> movies = storage.getMovies();
 
         if (movies.isEmpty()) {
             event.reply("The movie list is currently empty.").queue();
@@ -177,6 +220,29 @@ public class MovieBot extends ListenerAdapter
 
     @Override
     public void onStringSelectInteraction(StringSelectInteractionEvent event){
+
+        String id = event.getComponentId();
+
+        if (id.equals("remove-movie-select")) {
+
+            // Payload looks like: "remove:7"
+            String raw = event.getValues().get(0);
+            int index = Integer.parseInt(raw.replace("remove:", ""));
+
+            List<Movie> movies = storage.getMovies();
+
+            if (index < 0 || index >= movies.size()) {
+                event.reply("That movie no longer exists.").setEphemeral(true).queue();
+                return;
+            }
+
+            Movie movie = movies.get(index);
+            storage.removeMovie(movie);
+
+            event.reply("🗑Removed **" + movie.getTitle() + "**.").queue();
+            return;
+        }
+
         if (!event.getComponentId().equals("movie_select")) return;
 
         String selectedMovieId = event.getValues().get(0);
@@ -199,18 +265,18 @@ public class MovieBot extends ListenerAdapter
                 : null;
 
         Movie m = new Movie(title, year, poster);
-        MovieBot.getStorage().addMovie(m);
+        storage.addMovie(m);
 
         event.reply("Added **" + title + "** (" + year + ") to the list!").queue();
     }
 
-    public static JsonObject fetchMovieById(String id) {
+    public JsonObject fetchMovieById(String id) {
         return tmdb.getMovieById(id);
     }
 
     // Build a MessageEmbed for a page (5 movies per page)
     private MessageEmbed buildMovieListEmbed(int page) {
-        var movies = MovieBot.getStorage().getMovies();
+        var movies = storage.getMovies();
         final int pageSize = 5;
         int totalPages = Math.max(1, (int) Math.ceil(movies.size() / (double) pageSize));
 
@@ -218,7 +284,7 @@ public class MovieBot extends ListenerAdapter
         int end = Math.min(start + pageSize, movies.size());
 
         EmbedBuilder eb = new EmbedBuilder();
-        eb.setTitle("🎬 Movie List");
+        eb.setTitle("Movie List");
         eb.setColor(0x570000);
         eb.setFooter("Page " + (page + 1) + " of " + totalPages);
 
@@ -244,7 +310,7 @@ public class MovieBot extends ListenerAdapter
 
     // Build prev/next buttons for a given current page. Returns List<Button>
     private List<Button> buildPageButtons(int currentPage) {
-        var movies = MovieBot.getStorage().getMovies();
+        var movies = storage.getMovies();
         final int pageSize = 5;
         int totalPages = Math.max(1, (int) Math.ceil(movies.size() / (double) pageSize));
 
@@ -270,7 +336,7 @@ public class MovieBot extends ListenerAdapter
         String action = parts[2];         // "prev" or "next"
         int currentPage = Integer.parseInt(parts[3]);
 
-        var movies = MovieBot.getStorage().getMovies();
+        var movies = storage.getMovies();
         final int pageSize = 5;
         int totalPages = (int) Math.ceil(movies.size() / (double) pageSize);
 

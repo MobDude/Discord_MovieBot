@@ -105,7 +105,7 @@ public class MovieBot extends ListenerAdapter
 
         JsonArray results = tmdb.searchMovies(name, year);
 
-        if (results.size() == 0){
+        if (results.isEmpty()){
             event.getHook().sendMessage("No movies found with that name.").setEphemeral(true).queue();
             return;
         }
@@ -156,7 +156,7 @@ public class MovieBot extends ListenerAdapter
 
         // If only one match → delete immediately
         if (matchingIndexes.size() == 1) {
-            Movie movie = allMovies.get(matchingIndexes.get(0));
+            Movie movie = allMovies.get(matchingIndexes.getFirst());
             storage.removeMovie(movie);
 
             event.getHook()
@@ -232,7 +232,7 @@ public class MovieBot extends ListenerAdapter
         if (id.equals("remove-movie-select")) {
 
             // Payload looks like: "remove:7"
-            String raw = event.getValues().get(0);
+            String raw = event.getValues().getFirst();
             int index = Integer.parseInt(raw.replace("remove:", ""));
 
             List<Movie> movies = storage.getMovies();
@@ -251,7 +251,7 @@ public class MovieBot extends ListenerAdapter
 
         if (!event.getComponentId().equals("movie_select")) return;
 
-        String selectedMovieId = event.getValues().get(0);
+        String selectedMovieId = event.getValues().getFirst();
 
         //get selected movie details
         JsonObject movie = fetchMovieById(selectedMovieId);
@@ -284,10 +284,8 @@ public class MovieBot extends ListenerAdapter
     private MessageEmbed buildMovieListEmbed(int page) {
         var movies = storage.getMovies();
         final int pageSize = 5;
-        int totalPages = Math.max(1, (int) Math.ceil(movies.size() / (double) pageSize));
+        int totalPages = Math.max(1, (int) Math.ceil((movies.size() -1) / (double) pageSize) + 1);
 
-        int start = page * pageSize;
-        int end = Math.min(start + pageSize, movies.size());
 
         EmbedBuilder eb = new EmbedBuilder();
         eb.setTitle("Movie List");
@@ -299,17 +297,34 @@ public class MovieBot extends ListenerAdapter
             return eb.build();
         }
 
-        for (int i = start; i < end; i++) {
-            Movie m = movies.get(i);
-            String heading = (i + 1) + ". " + m.getTitle();
-            StringBuilder value = new StringBuilder();
-            value.append("Year: ").append(m.getYear());
-            if (m.getPosterURL() != null && !m.getPosterURL().isBlank()) {
-                value.append("\n[Poster](").append(m.getPosterURL()).append(")");
-                // you could also set the thumbnail to the first movie on page if you like
+        if(page == 0){
+            Movie next = movies.getFirst();
+
+            eb.setDescription("Next Up: " + next.getTitle() + " (" + next.getYear() + ")");
+            if (next.getPosterURL() != null && !next.getPosterURL().isBlank()){
+                eb.setImage(next.getPosterURL()); //set image
             }
-            eb.addField(heading, value.toString(), false);
+
+            return eb.build();
+
         }
+
+            int start = 1 + (page -1) * pageSize;
+            int end = Math.min(start + pageSize, movies.size());
+
+            for (int i = start; i < end; i++) {
+
+                Movie m = movies.get(i);
+                String heading = (i + 1) + ". " + m.getTitle();
+                StringBuilder value = new StringBuilder("Year: " + m.getYear());
+
+                if (m.getPosterURL() != null && !m.getPosterURL().isBlank()) {
+                    value.append("\n[Poster](").append(m.getPosterURL()).append(")");
+                    // you could also set the thumbnail to the first movie on page if you like
+                }
+                eb.addField(heading, value.toString(), false);
+            }
+
 
         return eb.build();
     }

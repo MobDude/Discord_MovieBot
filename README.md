@@ -1,6 +1,6 @@
 # Discord MovieBot
 Author: Mark Bowerman
-Version 2.01
+Version 2.10
 
 ## Current Features:
 - [x] Search for movies on tmdb and pull data including posters

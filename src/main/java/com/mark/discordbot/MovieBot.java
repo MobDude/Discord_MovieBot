@@ -2,6 +2,7 @@ package com.mark.discordbot;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.components.selections.StringSelectMenu;
 import net.dv8tion.jda.api.entities.Activity;
@@ -32,7 +33,7 @@ public class MovieBot extends ListenerAdapter
         this.storage = new MovieStorage();
     }
 
-    public static void main(String[] args) throws LoginException {
+    public static void main(String[] args) throws InterruptedException {
 
         // Load .env
         String token = System.getenv("DISCORD_TOKEN");
@@ -49,11 +50,16 @@ public class MovieBot extends ListenerAdapter
 
 
         // Build JDA bot
-        JDABuilder.createDefault(token)
+        JDA jda = JDABuilder.createDefault(token)
                 .setActivity(Activity.watching("Movie Nights"))
                 .addEventListeners(new MovieBot(tmdbKey))
-                .build()
-                .updateCommands()
+                .build();
+        try {
+            jda.awaitReady(); // blocks until connected
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        jda.updateCommands()
                 .addCommands(
                         //add movie slash command
                         Commands.slash("addmovie", "Adds a movie to the list")
@@ -69,8 +75,9 @@ public class MovieBot extends ListenerAdapter
                 )
                 .queue();
 
-
         System.out.println("MovieBot is now running!");
+
+        Thread.currentThread().join();
     }
 
 
@@ -154,7 +161,7 @@ public class MovieBot extends ListenerAdapter
             storage.removeMovie(movie);
 
             event.getHook()
-                    .sendMessage("🗑️ Removed **" + movie.getTitle() + "** from the movie list.")
+                    .sendMessage("Removed **" + movie.getTitle() + "** from the movie list.")
                     .queue();
             return;
         }

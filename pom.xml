@@ -4,7 +4,7 @@
   <groupId>com.mark.discordbot</groupId>
   <artifactId>movie-bot</artifactId>
   <packaging>jar</packaging>
-  <version>1.0-SNAPSHOT</version>
+  <version>2.0</version>
   <name>movie-bot</name>
   <url>http://maven.apache.org</url>
   <dependencies>
@@ -27,6 +27,8 @@
 
   <build>
     <plugins>
+
+      <!-- Compiler plugin -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
@@ -36,6 +38,30 @@
           <target>21</target>
         </configuration>
       </plugin>
+
+      <!-- Shade plugin to build a fat jar -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.5.1</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <transformers>
+                <!-- Set your main class here -->
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>com.mark.discordbot.MovieBot</mainClass>
+                </transformer>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
     </plugins>
   </build>
 </project>

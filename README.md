@@ -9,9 +9,9 @@ Version 2.01
 - [x] Dropdown functionality for multiple results
 - [x] Remove movies by entering a movie's name
 - [x] Again, Dropdown for multiple resutls
-
+- [x] Display Movie Posters on Embed
+      
 ## Future Ideas:
-- [ ] Display Movie Posters on Embed
 - [ ] Autmatically create and start discord events, pinging @moviegoer role
 - [ ] Integrate with google sheets for stats
 - [ ] Implement Rating commands

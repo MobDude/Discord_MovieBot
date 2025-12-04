@@ -2,6 +2,8 @@
 Author: Mark Bowerman
 Version 2.10
 
+This project is licensed under the GNU GPLv3 License - see the LICENSE file for details.
+
 ## Current Features:
 - [x] Search for movies on tmdb and pull data including posters
 - [x] Display a list of movies on a paginated discord embed

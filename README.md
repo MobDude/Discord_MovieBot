@@ -1,18 +1,37 @@
 # Discord_MovieBot
 Author: Mark Bowerman
-Version 2.0
+Version 2.01
 
 ## Current Features:
-- Search for movies on tmdb and pull data including posters
-- Display a list of movies on a paginated discord embed
-- Add movies by searching database by name and optionally year
-- Dropdown functionality for multiple results
-- Remove movies by entering a movie's name
-- Again, Dropdown for multiple resutls
+- [x] Search for movies on tmdb and pull data including posters
+- [x] Display a list of movies on a paginated discord embed
+- [x] Add movies by searching database by name and optionally year
+- [x] Dropdown functionality for multiple results
+- [x] Remove movies by entering a movie's name
+- [x] Again, Dropdown for multiple resutls
 
 ## Future Ideas:
-- Display Movie Posters on Embed
-- Autmatically create and start discord events, pinging @moviegoer role
-- Integrate with google sheets for stats
-- Implement Rating commands
-- Show stats in embed
+- [ ] Display Movie Posters on Embed
+- [ ] Autmatically create and start discord events, pinging @moviegoer role
+- [ ] Integrate with google sheets for stats
+- [ ] Implement Rating commands
+- [ ] Show stats in embed
+
+## Usage
+| Command | Options | Description |
+|---------|---------|-------------|
+| /addmovie | name (string, required), year (int, optional) | Addsa movie to the list |
+| /removemovie | query (string, required) | Removes a movie from the list |
+| /movielist | N/A | Displays the current movie list |
+
+## Dependencies
+- JDA (Java Discord API)
+- Gson (for JSON parsing)
+- SLF4J (logging)
+
+## Known Issues
+- SLF4J fallback logger warnings
+- Bot must be resarted to pick up .env changes if running as a service
+
+
+

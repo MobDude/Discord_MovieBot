@@ -11,7 +11,6 @@ import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionE
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
-import javax.security.auth.login.LoginException;
 import net.dv8tion.jda.api.components.actionrow.ActionRow;
 import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.EmbedBuilder;
@@ -102,12 +101,12 @@ public class MovieBot extends ListenerAdapter
         String name = event.getOption("name").getAsString();
         Integer year = event.getOption("year") != null ? event.getOption("year").getAsInt() : null;
 
-        event.deferReply().queue();
+        event.deferReply().setEphemeral(true).queue();
 
         JsonArray results = tmdb.searchMovies(name, year);
 
         if (results.size() == 0){
-            event.getHook().sendMessage("No movies found with that name.").queue();
+            event.getHook().sendMessage("No movies found with that name.").setEphemeral(true).queue();
             return;
         }
 
@@ -125,7 +124,7 @@ public class MovieBot extends ListenerAdapter
             Movie movie = new Movie(title, releaseYear, poster);
             storage.addMovie(movie);
 
-            event.getHook().sendMessage("Added **" + title + "** (" + releaseYear + ")").queue();
+            event.getHook().sendMessage("Added **" + title + "** (" + releaseYear + ")").setEphemeral(true).queue();
             return;
 
         }
@@ -139,7 +138,7 @@ public class MovieBot extends ListenerAdapter
         String query = event.getOption("query").getAsString();
         List<Movie> allMovies = storage.getMovies();
 
-        event.deferReply().queue(); // ACKNOWLEDGE ONCE
+        event.deferReply().setEphemeral(true).queue(); // ACKNOWLEDGE ONCE
 
         // Search for movies containing the query (case-insensitive)
         List<Integer> matchingIndexes = new ArrayList<>();
@@ -151,7 +150,7 @@ public class MovieBot extends ListenerAdapter
         }
 
         if (matchingIndexes.isEmpty()) {
-            event.getHook().sendMessage("I couldn't find any movies matching **" + query + "**.").queue();
+            event.getHook().sendMessage("I couldn't find any movies matching **" + query + "**.").setEphemeral(true).queue();
             return;
         }
 
@@ -161,7 +160,7 @@ public class MovieBot extends ListenerAdapter
             storage.removeMovie(movie);
 
             event.getHook()
-                    .sendMessage("Removed **" + movie.getTitle() + "** from the movie list.")
+                    .sendMessage("Removed **" + movie.getTitle() + "** from the movie list.").setEphemeral(true)
                     .queue();
             return;
         }
@@ -221,7 +220,7 @@ public class MovieBot extends ListenerAdapter
 
         event.getHook()
                 .sendMessage("I found multiple results for **" + query + "**:")
-                .addComponents(ActionRow.of(menu.build()))
+                .addComponents(ActionRow.of(menu.build())).setEphemeral(true)
                 .queue();
     }
 
@@ -239,14 +238,14 @@ public class MovieBot extends ListenerAdapter
             List<Movie> movies = storage.getMovies();
 
             if (index < 0 || index >= movies.size()) {
-                event.reply("That movie no longer exists.").setEphemeral(true).queue();
+                event.reply("That movie no longer exists.").setEphemeral(true).setEphemeral(true).queue();
                 return;
             }
 
             Movie movie = movies.get(index);
             storage.removeMovie(movie);
 
-            event.reply("🗑Removed **" + movie.getTitle() + "**.").queue();
+            event.reply("🗑Removed **" + movie.getTitle() + "**.").setEphemeral(true).queue();
             return;
         }
 
@@ -274,7 +273,7 @@ public class MovieBot extends ListenerAdapter
         Movie m = new Movie(title, year, poster);
         storage.addMovie(m);
 
-        event.reply("Added **" + title + "** (" + year + ") to the list!").queue();
+        event.reply("Added **" + title + "** (" + year + ") to the list!").setEphemeral(true).queue();
     }
 
     public JsonObject fetchMovieById(String id) {

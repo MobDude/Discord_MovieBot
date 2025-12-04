@@ -1,4 +1,4 @@
-# Discord_MovieBot
+# Discord MovieBot
 Author: Mark Bowerman
 Version 2.01
 

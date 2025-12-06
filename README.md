@@ -10,19 +10,18 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 - [x] Add movies by searching database by name and optionally year
 - [x] Dropdown functionality for multiple results
 - [x] Remove movies by entering a movie's name
-- [x] Again, Dropdown for multiple resutls
-- [x] Display Movie Posters on Embed
+- [x] Display movie posters on embed
       
 ## Future Ideas:
 - [ ] Autmatically create and start discord events, pinging @moviegoer role
 - [ ] Integrate with google sheets for stats
-- [ ] Implement Rating commands
+- [ ] Implement rating commands
 - [ ] Show stats in embed
 
 ## Usage
 | Command | Options | Description |
 |---------|---------|-------------|
-| /addmovie | name (string, required), year (int, optional) | Addsa movie to the list |
+| /addmovie | name (string, required), year (int, optional) | Adds a movie to the list |
 | /removemovie | query (string, required) | Removes a movie from the list |
 | /movielist | N/A | Displays the current movie list |
 
@@ -33,9 +32,8 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 
 ## Known Issues
 - SLF4J fallback logger warnings
-- Bot must be resarted to pick up .env changes if running as a service
 - Only 5 pages of movie list are viewable
-- Movie Json could use better formatting
+- Movie json could use better formatting
 
 
 

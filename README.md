@@ -34,6 +34,8 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 ## Known Issues
 - SLF4J fallback logger warnings
 - Bot must be resarted to pick up .env changes if running as a service
+- Only 5 pages of movie list are viewable
+- Movie Json could use better formatting
 
 
 

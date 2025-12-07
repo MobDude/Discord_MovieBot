@@ -6,6 +6,7 @@ import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.components.selections.StringSelectMenu;
 import net.dv8tion.jda.api.entities.Activity;
+import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
@@ -16,6 +17,8 @@ import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 
+
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,10 +30,12 @@ public class MovieBot extends ListenerAdapter
     private static final int PAGE_SIZE = 5;
     private final MovieStorage storage;
     private final TMDb tmdb;
+    private final MovieScheduler scheduler;
 
     public MovieBot(String tmdbKey) {
         this.tmdb = new TMDb(tmdbKey);
         this.storage = new MovieStorage();
+        this.scheduler = new MovieScheduler();
     }
 
     public static void main(String[] args) throws InterruptedException {
@@ -122,8 +127,19 @@ public class MovieBot extends ListenerAdapter
             String poster = m.get("poster_path").isJsonNull() ? null :
                     "https://image.tmdb.org/t/p/w500" + m.get("poster_path").getAsString();
 
-            Movie movie = new Movie(title, releaseYear, poster);
+            int id = m.get("id").getAsInt();
+            int runtime = tmdb.getRuntime(id);
+
+            Movie movie = new Movie(title, releaseYear, poster, runtime);
             storage.addMovie(movie);
+
+            Guild guild = event.getGuild();
+            OffsetDateTime start = scheduler.findNextAvailableSlot(runtime, movie, guild);
+
+            if( start != null){
+                OffsetDateTime end = start.plusMinutes(runtime + 15);
+                scheduler.createDiscordEvent(guild, movie, start, end);
+            }
 
             event.getHook().sendMessage("Added **" + title + "** (" + releaseYear + ")").setEphemeral(true).queue();
             return;
@@ -228,6 +244,8 @@ public class MovieBot extends ListenerAdapter
     @Override
     public void onStringSelectInteraction(StringSelectInteractionEvent event){
 
+        event.deferReply().setEphemeral(true).queue();
+
         String id = event.getComponentId();
 
         if (id.equals("remove-movie-select")) {
@@ -271,10 +289,19 @@ public class MovieBot extends ListenerAdapter
                 ? "https://image.tmdb.org/t/p/w500" + movie.get("poster_path").getAsString()
                 : null;
 
-        Movie m = new Movie(title, year, poster);
+        int runtime = tmdb.getRuntime(movie.get("id").getAsInt());
+        Movie m = new Movie(title, year, poster, runtime);
         storage.addMovie(m);
 
-        event.reply("Added **" + title + "** (" + year + ") to the list!").setEphemeral(true).queue();
+        Guild guild = event.getGuild();
+        OffsetDateTime start = scheduler.findNextAvailableSlot(runtime, m, guild);
+
+        if (start != null) {
+            OffsetDateTime end = start.plusMinutes(runtime + 15);
+            scheduler.createDiscordEvent(guild, m, start, end);
+        }
+
+        event.getHook().sendMessage("Added **" + title + "** (" + year + ") to the list!").setEphemeral(true).queue();
     }
 
     public JsonObject fetchMovieById(String id) {

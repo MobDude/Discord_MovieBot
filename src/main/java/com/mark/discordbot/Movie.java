@@ -1,14 +1,17 @@
 package com.mark.discordbot;
 
 public class Movie {
-    private String title;
-    private int year;
-    private String posterURL;
+    private final String title;
+    private final int year;
+    private final String posterURL;
+    private final int runtimeMinutes;
 
-    public Movie(String title, int year, String posterURL){
+    public Movie(String title, int year, String posterURL, int runtimeMinutes){
         this.title = title;
         this.year = year;
         this.posterURL = posterURL;
+        this.runtimeMinutes = runtimeMinutes;
+
     }
 
     //Getters
@@ -20,5 +23,8 @@ public class Movie {
     }
     public String getPosterURL() {
         return posterURL;
+    }
+    public int getRuntimeMinutes(){
+        return runtimeMinutes;
     }
 }

@@ -10,16 +10,33 @@ import java.net.URL;
 
 public class TMDb {
 
-    private final String apiKey;
+    private static String API_KEY;
+    private static final String BASE_URL = "https://api.themoviedb.org/3";
 
-    public TMDb(String apiKey){
-        this.apiKey = apiKey;
+    public TMDb(String apikey){
+        API_KEY = apikey;
+    }
+
+    private JsonObject makeRequest(String urlStr) {
+        try {
+            URL url = new URL(urlStr);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+
+            return JsonParser.parseReader(
+                    new InputStreamReader(conn.getInputStream())
+            ).getAsJsonObject();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     public JsonArray searchMovies(String query, Integer year){
         try{
             query = query.replace(" ", "%20");
-            String urlStr = "https://api.themoviedb.org/3/search/movie?api_key=" + apiKey + "&query=" + query + (year != null ? "&year=" + year : "");
+            String urlStr = BASE_URL + "/search/movie?api_key=" + API_KEY + "&query=" + query + (year != null ? "&year=" + year : "");
             URL url = new URL(urlStr);
 
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -39,8 +56,8 @@ public class TMDb {
 
     public JsonObject getMovieById(String id) {
         try {
-            String urlStr = "https://api.themoviedb.org/3/movie/" + id +
-                    "?api_key=" + apiKey;
+            String urlStr =  BASE_URL + "/movie/" + id +
+                    "?api_key=" + API_KEY;
 
             URL url = new URL(urlStr);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -54,6 +71,16 @@ public class TMDb {
             e.printStackTrace();
             return null;
         }
+    }
+
+    public int getRuntime(int movieId){
+        String url = BASE_URL + "/movie/" + movieId + "?api_key=" + API_KEY;
+        JsonObject obj = makeRequest(url);
+
+        if(obj.has("runtime") && !obj.get("runtime").isJsonNull()){
+            return obj.get("runtime").getAsInt();
+        }
+        return 0;
     }
 
 }

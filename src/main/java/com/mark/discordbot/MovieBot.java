@@ -24,6 +24,7 @@ import java.util.List;
  */
 public class MovieBot extends ListenerAdapter
 {
+    private static final int PAGE_SIZE = 5;
     private final MovieStorage storage;
     private final TMDb tmdb;
 
@@ -283,9 +284,7 @@ public class MovieBot extends ListenerAdapter
     // Build a MessageEmbed for a page (5 movies per page)
     private MessageEmbed buildMovieListEmbed(int page) {
         var movies = storage.getMovies();
-        final int pageSize = 5;
-        int totalPages = Math.max(1, (int) Math.ceil((movies.size() -1) / (double) pageSize) + 1);
-
+        int totalPages = computeTotalPages(movies);
 
         EmbedBuilder eb = new EmbedBuilder();
         eb.setTitle("Movie List");
@@ -309,8 +308,8 @@ public class MovieBot extends ListenerAdapter
 
         }
 
-            int start = 1 + (page -1) * pageSize;
-            int end = Math.min(start + pageSize, movies.size());
+            int start = 1 + (page -1) * PAGE_SIZE;
+            int end = Math.min(start + PAGE_SIZE, movies.size());
 
             for (int i = start; i < end; i++) {
 
@@ -332,8 +331,7 @@ public class MovieBot extends ListenerAdapter
     // Build prev/next buttons for a given current page. Returns List<Button>
     private List<Button> buildPageButtons(int currentPage) {
         var movies = storage.getMovies();
-        final int pageSize = 5;
-        int totalPages = Math.max(1, (int) Math.ceil(movies.size() / (double) pageSize));
+        int totalPages = computeTotalPages(movies);
 
         Button prev = Button.primary("movie_page_prev_" + currentPage, "◀ Previous")
                 .withDisabled(currentPage == 0);
@@ -358,8 +356,7 @@ public class MovieBot extends ListenerAdapter
         int currentPage = Integer.parseInt(parts[3]);
 
         var movies = storage.getMovies();
-        final int pageSize = 5;
-        int totalPages = (int) Math.ceil(movies.size() / (double) pageSize);
+        int totalPages = computeTotalPages(movies);
 
         int newPage = action.equals("prev")
                 ? Math.max(0, currentPage - 1)
@@ -371,6 +368,13 @@ public class MovieBot extends ListenerAdapter
         event.editMessageEmbeds(embed)
                 .setComponents(ActionRow.of(buttons.get(0), buttons.get(1)))
                 .queue();
+    }
+
+    private int computeTotalPages(List<Movie> movies){
+        if (movies.isEmpty()){
+            return  1;
+        }
+        return Math.max(1, (int) Math.ceil((movies.size() -1) / (double) PAGE_SIZE) + 1);
     }
 
 

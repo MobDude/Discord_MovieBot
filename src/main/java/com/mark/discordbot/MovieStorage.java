@@ -1,6 +1,7 @@
 package com.mark.discordbot;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import java.io.*;
 import java.lang.reflect.Type;
@@ -10,8 +11,8 @@ import java.util.List;
 public class MovieStorage {
 
     private static final String FILE_PATH = "movies.json";
-    private static final Gson gson = new Gson();
-    private List<Movie> movies;
+    private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    private final List<Movie> movies;
 
     public MovieStorage() {
         movies = load();

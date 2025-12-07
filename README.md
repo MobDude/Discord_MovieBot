@@ -1,6 +1,6 @@
 # Discord MovieBot
 Author: Mark Bowerman
-Version 2.10
+Version 2.11
 
 This project is licensed under the GNU GPLv3 License - see the LICENSE file for details.
 

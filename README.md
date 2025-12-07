@@ -1,6 +1,6 @@
 # Discord MovieBot
 Author: Mark Bowerman
-Version 2.10
+Version 2.11
 
 This project is licensed under the GNU GPLv3 License - see the LICENSE file for details.
 
@@ -32,8 +32,6 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 
 ## Known Issues
 - SLF4J fallback logger warnings
-- Only 5 pages of movie list are viewable
-- Movie json could use better formatting
 
 
 

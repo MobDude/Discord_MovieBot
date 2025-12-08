@@ -22,6 +22,10 @@ public class MovieScheduler {
 
     public OffsetDateTime findNextAvailableSlot(int runtime, Movie movie, Guild guild) {
 
+        ZonedDateTime searchBase = ZonedDateTime.now(ZONE);
+
+        List<ScheduledEvent> events = guild.retrieveScheduledEvents().complete();
+
         while (true) {
 
             for (WeeklySlot s : slots) {
@@ -29,23 +33,23 @@ public class MovieScheduler {
                 if (!s.longAllowed && runtime > 150) //max duration of 150min on weekdays
                     continue; // skip invalid slot for long movies
 
-                OffsetDateTime start = nextOccurrence(s.day, s.time);
+                OffsetDateTime start = nextOccurrence(s.day, s.time, searchBase);
                 OffsetDateTime end = start.plusMinutes(runtime + BUFFER_MINUTES);
 
-                if (!conflicts(guild, movie, start, end)) {
+                if (!conflicts(events, guild, movie, start, end)) {
                     return start;
                 }
             }
 
             //move search one week forward
-            advanceOneWeek();
+            searchBase = searchBase.plusWeeks(1);
         }
     }
 
-    private OffsetDateTime nextOccurrence(DayOfWeek day, LocalTime time) {
+    private OffsetDateTime nextOccurrence(DayOfWeek day, LocalTime time, ZonedDateTime base) {
 
-        ZonedDateTime now = ZonedDateTime.now(ZONE);
-        LocalDate date = now.toLocalDate();
+
+        LocalDate date = base.toLocalDate();
 
         while (date.getDayOfWeek() != day) {
             date = date.plusDays(1);
@@ -54,44 +58,50 @@ public class MovieScheduler {
         ZonedDateTime candidate = ZonedDateTime.of(date, time, ZONE);
 
         // If this week's time already passed then use next week
-        if (candidate.isBefore(now)) {
+        if (candidate.isBefore(base)) {
             candidate = candidate.plusWeeks(1);
         }
 
         return candidate.toOffsetDateTime();
     }
 
-    private boolean conflicts(Guild guild, Movie movie, OffsetDateTime start, OffsetDateTime end) {
+    private boolean conflicts(List<ScheduledEvent> events, Guild guild, Movie movie, OffsetDateTime start, OffsetDateTime end) {
 
-        List<ScheduledEvent> events = guild.retrieveScheduledEvents().complete();
+        var movieChannel = guild.getVoiceChannels().stream()
+                .filter(voiceChannel -> voiceChannel.getName().equals("🍿movie-theatre")).findFirst().orElse(null);
+
+        if (movieChannel == null){
+            System.err.println("Error: Could not find 🍿movie-theatre voice channel.");
+            return true; // safer to block than to accidentally overlap
+        }
 
         for (ScheduledEvent event : events) {
 
-            if (!event.getName().startsWith("Movie Night -"))
+            //ignore events for other channels
+            if (!event.getChannel().getId().equals(movieChannel.getId()))
                 continue;
 
+            //prevent duplicate movies
             if (event.getName().equals("Movie Night - " + movie.getTitle()))
-                return true; // duplicate movie
+                return true;
 
             OffsetDateTime eStart = event.getStartTime();
             OffsetDateTime eEnd = event.getEndTime();
 
             if( eEnd == null){
-                eEnd = eStart.plusHours(2);
+                eEnd = eStart.plusHours(3); //assume 3 hours if dc has no end time
             }
 
             boolean overlap =
                     !(end.isBefore(eStart) || start.isAfter(eEnd));
 
-            if (overlap)
+            if (overlap) {
+                System.out.println("Slot blocked by existing event: " + event.getName());
                 return true;
+            }
         }
 
         return false;
-    }
-
-    private void advanceOneWeek() {
-        // nothing to do nextOccurrence() shifts into next week
     }
 
     public void createDiscordEvent(Guild guild, Movie movie, OffsetDateTime start, OffsetDateTime end) {

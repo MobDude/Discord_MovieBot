@@ -1,6 +1,6 @@
 # Discord MovieBot
 Author: Mark Bowerman
-Version 2.11
+Version 2.20
 
 This project is licensed under the GNU GPLv3 License - see the LICENSE file for details.
 
@@ -11,9 +11,11 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 - [x] Dropdown functionality for multiple results
 - [x] Remove movies by entering a movie's name
 - [x] Display movie posters on embed
+- [x] Autmatically create and start Discord scheduled events
       
 ## Future Ideas:
-- [ ] Autmatically create and start discord events, pinging @moviegoer role
+- [ ] Add more details to the Discord scheduled events
+- [ ] Pinging @moviegoer role when event starts
 - [ ] Integrate with google sheets for stats
 - [ ] Implement rating commands
 - [ ] Show stats in embed

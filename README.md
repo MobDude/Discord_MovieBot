@@ -15,7 +15,9 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
       
 ## Future Ideas:
 - [ ] Add more details to the Discord scheduled events
+- [ ] Lock and unlock movie theatre voice channel
 - [ ] Pinging @moviegoer role when event starts
+- [ ] Remove scheduled events and reschedule the ones after it when removing a movie from the list
 - [ ] Integrate with google sheets for stats
 - [ ] Implement rating commands
 - [ ] Show stats in embed

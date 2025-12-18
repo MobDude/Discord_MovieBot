@@ -1,6 +1,6 @@
 # Discord MovieBot
 Author: Mark Bowerman
-Version 2.20
+Version 2.21
 
 This project is licensed under the GNU GPLv3 License - see the LICENSE file for details.
 
@@ -28,6 +28,7 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 | /addmovie | name (string, required), year (int, optional) | Adds a movie to the list |
 | /removemovie | query (string, required) | Removes a movie from the list |
 | /movielist | N/A | Displays the current movie list |
+| /moviehelp | N/A | Displays command help for the Movie Bot |
 
 ## Dependencies
 - JDA (Java Discord API)

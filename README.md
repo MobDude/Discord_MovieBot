@@ -1,6 +1,6 @@
 # Discord MovieBot
 Author: Mark Bowerman
-Version 2.21
+Version 2.22
 
 This project is licensed under the GNU GPLv3 License - see the LICENSE file for details.
 
@@ -33,10 +33,9 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 ## Dependencies
 - JDA (Java Discord API)
 - Gson (for JSON parsing)
-- SLF4J (logging)
 
 ## Known Issues
-- SLF4J fallback logger warnings
+
 
 
 

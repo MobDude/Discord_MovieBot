@@ -56,7 +56,7 @@ public class MovieBot extends ListenerAdapter
 
         // Build JDA bot
         JDA jda = JDABuilder.createDefault(token)
-                .setActivity(Activity.watching("Movie Nights"))
+                .setActivity(Activity.watching("/movielist"))
                 .addEventListeners(new MovieBot(tmdbKey))
                 .build();
         try {
@@ -76,7 +76,10 @@ public class MovieBot extends ListenerAdapter
                                 .addOption(OptionType.STRING, "query", "Part of the movie name", true),
 
                         //show list slash command
-                        Commands.slash("movielist", "Shows the movie list")
+                        Commands.slash("movielist", "Shows the movie list"),
+
+                        //add help command
+                        Commands.slash("moviehelp", "Displays command help for the Movie Bot.")
                 )
                 .queue();
 
@@ -100,7 +103,46 @@ public class MovieBot extends ListenerAdapter
             case "movielist":
                 handleMovieList(event);
                 break;
+
+            case "moviehelp":
+                handleMovieHelp(event);
+                break;
         }
+    }
+
+    private void handleMovieHelp(SlashCommandInteractionEvent event) {
+        EmbedBuilder embed = new EmbedBuilder();
+
+        embed.setTitle("MovieBot Help");
+        embed.setDescription("Possible commands: ");
+
+        embed.addField(
+                "/addmovie", """
+                        Adds a movie to the movie list.
+                        **Options:**
+                        'name' (required) - Movie Title
+                        'year' (optional) - Release Year
+                        """, false
+        );
+
+        embed.addField(
+                "/removemovie",
+                """
+                        Removes a movie from the list using its name.
+                        **Options:**
+                        `query` (required) – Movie Title""", false
+        );
+
+        embed.addField(
+                "/movielist", "Shows all movies currently in the list.", false
+        );
+
+        embed.addField(
+                "/moviehelp", "Displays this help message.", false
+        );
+
+        embed.setFooter("MovieBot");
+        event.replyEmbeds(embed.build()).setEphemeral(true).queue();
     }
 
     private void handleAddMovie(SlashCommandInteractionEvent event){

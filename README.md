@@ -35,7 +35,7 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 - Gson (for JSON parsing)
 
 ## Known Issues
-
+- When addeding a movie, it is always added to the end of the movie list. Meanwhile the scheduled event is created in the first available slot, resulting in the list not matching the order of the events.
 
 
 

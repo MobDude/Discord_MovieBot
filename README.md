@@ -11,9 +11,10 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 - [x] Dropdown functionality for multiple results
 - [x] Remove movies by entering a movie's name
 - [x] Display movie posters on embed
-- [x] Autmatically create and start Discord scheduled events
+- [x] Automatically create and schedule Discord scheduled events
       
 ## Future Ideas:
+- [ ] Rearrange movie list as needed when scheduling a movie
 - [ ] Add more details to the Discord scheduled events
 - [ ] Lock and unlock movie theatre voice channel
 - [ ] Pinging @moviegoer role when event starts

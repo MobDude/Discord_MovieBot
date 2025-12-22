@@ -23,14 +23,39 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Class to load the token and API key, initialize JDA, register commands, and handle events
+ * Main entry point and event handler for MovieBot.
+ * <p>
+ * This class initializes the Discord bot, registers slash commands, and handles all user interactions related to movie
+ * management, including adding, removing, listing, and scheduling movies.
+ * </p>
  */
 public class MovieBot extends ListenerAdapter
 {
+    /**
+     * Number of movies displayed per page in the movie list.
+     */
     private static final int PAGE_SIZE = 5;
+
+    /**
+     * Persistent storage for the movie list.
+     */
     private final MovieStorage storage;
+
+    /**
+     * Client for querying the TMDb API.
+     */
     private final TMDb tmdb;
+
+    /**
+     * Scheduler used to determine movie night times and create Discord scheduled events.
+     */
     private final MovieScheduler scheduler;
+
+    /**
+     * The amount of minutes to add as a buffer to scheduled events.
+     */
+    private static final int EVENT_BUFFER_MINUTES = 15;
+
 
     public MovieBot(String tmdbKey) {
         this.tmdb = new TMDb(tmdbKey);
@@ -38,6 +63,13 @@ public class MovieBot extends ListenerAdapter
         this.scheduler = new MovieScheduler();
     }
 
+
+    /**
+     * Application entry point.
+     * <p>
+     * Loads environment variables, initializes JDA, registers slash commands, and starts the bot.
+     * </p>
+     */
     public static void main(String[] args) throws InterruptedException {
 
         // Load .env
@@ -62,7 +94,8 @@ public class MovieBot extends ListenerAdapter
         try {
             jda.awaitReady(); // blocks until connected
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            Thread.currentThread().interrupt();
+            System.err.println("Bot startup interrupted");
         }
         jda.updateCommands()
                 .addCommands(
@@ -88,7 +121,10 @@ public class MovieBot extends ListenerAdapter
         Thread.currentThread().join();
     }
 
-
+    /**
+     * Routes incoming slash commands to their respective handlers.
+     * @param event the slash command interaction event
+     */
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event){
         switch (event.getName()){
@@ -107,6 +143,9 @@ public class MovieBot extends ListenerAdapter
             case "moviehelp":
                 handleMovieHelp(event);
                 break;
+
+            default:
+                event.reply("Unknown command.").setEphemeral(true).queue();
         }
     }
 
@@ -145,11 +184,20 @@ public class MovieBot extends ListenerAdapter
         event.replyEmbeds(embed.build()).setEphemeral(true).queue();
     }
 
+    /**
+     * Handles the /addmovie slash command.
+     * <p>
+     * Searches TMDb for matching movies, allows the user to select the correct on if multiple results are found,
+     * stores the movie, and schedules a Discord event if possible.
+     * </p>
+     */
     private void handleAddMovie(SlashCommandInteractionEvent event){
         String name = event.getOption("name").getAsString();
         Integer year = event.getOption("year") != null ? event.getOption("year").getAsInt() : null;
 
         event.deferReply().setEphemeral(true).queue();
+
+        if (!requireGuild(event)) return;
 
         JsonArray results = tmdb.searchMovies(name, year);
 
@@ -159,45 +207,33 @@ public class MovieBot extends ListenerAdapter
         }
 
         if (results.size() == 1){
-            JsonObject m = results.get(0).getAsJsonObject();
 
-            String title = m.get("title").getAsString();
-            int releaseYear = (m.has("release_date") && !m.get("release_date").getAsString().isEmpty())
-                    ? Integer.parseInt(m.get("release_date").getAsString().substring(0, 4))
-                    : 0;
+            Movie movie = buildMovieFromTmdb(results.get(0).getAsJsonObject());
+            addMovieAndSchedule(movie, event.getGuild());
 
-            String poster = m.get("poster_path").isJsonNull() ? null :
-                    "https://image.tmdb.org/t/p/w500" + m.get("poster_path").getAsString();
-
-            int id = m.get("id").getAsInt();
-            int runtime = tmdb.getRuntime(id);
-
-            Movie movie = new Movie(title, releaseYear, poster, runtime);
-            storage.addMovie(movie);
-
-            Guild guild = event.getGuild();
-            OffsetDateTime start = scheduler.findNextAvailableSlot(runtime, movie, guild);
-
-            if( start != null){
-                OffsetDateTime end = start.plusMinutes(runtime + 15);
-                scheduler.createDiscordEvent(guild, movie, start, end);
-            }
-
-            event.getHook().sendMessage("Added **" + title + "** (" + releaseYear + ")").setEphemeral(true).queue();
+            event.getHook().sendMessage("Added **" + movie.getTitle() + "** (" + movie.getYear() + ")").setEphemeral(true).queue();
             return;
 
         }
 
         sendMovieSelectionMenu(event, results, name);
 
-
     }
 
+    /**
+     * Handles the /removemovie slash command.
+     * <p>
+     * Removes a movie from the stored list, prompting the user
+     * to disambiguate if multiple matches are found.
+     * </p>
+     */
     private void handleRemoveMovie(SlashCommandInteractionEvent event){
         String query = event.getOption("query").getAsString();
         List<Movie> allMovies = storage.getMovies();
 
         event.deferReply().setEphemeral(true).queue(); // ACKNOWLEDGE ONCE
+
+        if (!requireGuild(event)) return;
 
         // Search for movies containing the query (case-insensitive)
         List<Integer> matchingIndexes = new ArrayList<>();
@@ -242,8 +278,16 @@ public class MovieBot extends ListenerAdapter
                 .queue();
     }
 
+    /**
+     * Handles the /movielist slash command.
+     * <p>
+     * Displays the current movie list with pagination controls.
+     * </p>
+     */
     private void handleMovieList(SlashCommandInteractionEvent event) {
         List<Movie> movies = storage.getMovies();
+
+        if (!requireGuild(event)) return;
 
         if (movies.isEmpty()) {
             event.reply("The movie list is currently empty.").queue();
@@ -283,10 +327,23 @@ public class MovieBot extends ListenerAdapter
                 .queue();
     }
 
+    /**
+     * Handles dropdown menu interactions for movie selection
+     * and movie removal.
+     *
+     * @param event the string select interaction event
+     */
     @Override
     public void onStringSelectInteraction(StringSelectInteractionEvent event){
 
         event.deferReply().setEphemeral(true).queue();
+
+        //failsafe to prevent users from using dms, which would result in null guild.
+        Guild guild = event.getGuild();
+        if (guild == null){
+            event.getHook().sendMessage("This action can only be used inside a server.").setEphemeral(true).queue();
+            return;
+        }
 
         String id = event.getComponentId();
 
@@ -299,51 +356,33 @@ public class MovieBot extends ListenerAdapter
             List<Movie> movies = storage.getMovies();
 
             if (index < 0 || index >= movies.size()) {
-                event.reply("That movie no longer exists.").setEphemeral(true).setEphemeral(true).queue();
+                event.reply("That movie no longer exists.").setEphemeral(true).queue();
                 return;
             }
 
             Movie movie = movies.get(index);
             storage.removeMovie(movie);
 
-            event.reply("🗑Removed **" + movie.getTitle() + "**.").setEphemeral(true).queue();
+            event.getHook().sendMessage("🗑Removed **" + movie.getTitle() + "**.").setEphemeral(true).queue();
             return;
         }
 
-        if (!event.getComponentId().equals("movie_select")) return;
+        if (!id.equals("movie_select")) return;
 
         String selectedMovieId = event.getValues().getFirst();
 
         //get selected movie details
-        JsonObject movie = fetchMovieById(selectedMovieId);
+        JsonObject movieJson = fetchMovieById(selectedMovieId);
 
-        if (movie == null) {
-            event.reply("Could not load movie data.").setEphemeral(true).queue();
+        if (movieJson == null) {
+            event.getHook().sendMessage("Could not load movie data.").setEphemeral(true).queue();
             return;
         }
 
-        String title = movie.get("title").getAsString();
-        int year = movie.has("release_date") && !movie.get("release_date").isJsonNull()
-                ? Integer.parseInt(movie.get("release_date").getAsString().substring(0, 4))
-                : 0;
+        Movie m = buildMovieFromTmdb(movieJson);
+        addMovieAndSchedule(m, guild);
 
-        String poster = movie.has("poster_path") && !movie.get("poster_path").isJsonNull()
-                ? "https://image.tmdb.org/t/p/w500" + movie.get("poster_path").getAsString()
-                : null;
-
-        int runtime = tmdb.getRuntime(movie.get("id").getAsInt());
-        Movie m = new Movie(title, year, poster, runtime);
-        storage.addMovie(m);
-
-        Guild guild = event.getGuild();
-        OffsetDateTime start = scheduler.findNextAvailableSlot(runtime, m, guild);
-
-        if (start != null) {
-            OffsetDateTime end = start.plusMinutes(runtime + 15);
-            scheduler.createDiscordEvent(guild, m, start, end);
-        }
-
-        event.getHook().sendMessage("Added **" + title + "** (" + year + ") to the list!").setEphemeral(true).queue();
+        event.getHook().sendMessage("Added **" + m.getTitle() + "** (" + m.getYear() + ") to the list!").setEphemeral(true).queue();
     }
 
     public JsonObject fetchMovieById(String id) {
@@ -411,6 +450,11 @@ public class MovieBot extends ListenerAdapter
         return List.of(prev, next);
     }
 
+    /**
+     * Handles pagination button interactions for the movie list.
+     *
+     * @param event the button interaction event
+     */
     @Override
     public void onButtonInteraction(
             net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event) {
@@ -446,5 +490,46 @@ public class MovieBot extends ListenerAdapter
         return Math.max(1, (int) Math.ceil((movies.size() -1) / (double) PAGE_SIZE) + 1);
     }
 
+    private void addMovieAndSchedule(Movie movie, Guild guild) {
+        storage.addMovie(movie);
 
+        if (guild == null) {
+            return;
+        }
+
+        OffsetDateTime start =
+                scheduler.findNextAvailableSlot(movie.getRuntimeMinutes(), movie, guild);
+
+        if (start != null) {
+            OffsetDateTime end =
+                    start.plusMinutes(movie.getRuntimeMinutes() +EVENT_BUFFER_MINUTES);
+            scheduler.createDiscordEvent(guild, movie, start, end);
+        }
+    }
+
+    private Movie buildMovieFromTmdb(JsonObject movieJson) {
+        String title = movieJson.get("title").getAsString();
+
+        int year = movieJson.has("release_date") && !movieJson.get("release_date").isJsonNull()
+                ? Integer.parseInt(movieJson.get("release_date").getAsString().substring(0, 4))
+                : 0;
+
+        String poster = movieJson.has("poster_path") && !movieJson.get("poster_path").isJsonNull()
+                ? "https://image.tmdb.org/t/p/w500" + movieJson.get("poster_path").getAsString()
+                : null;
+
+        int runtime = tmdb.getRuntime(movieJson.get("id").getAsInt());
+
+        return new Movie(title, year, poster, runtime);
+    }
+
+    private boolean requireGuild(SlashCommandInteractionEvent event) {
+        if (event.getGuild() == null) {
+            event.reply("This command can only be used inside a server.")
+                    .setEphemeral(true)
+                    .queue();
+            return false;
+        }
+        return true;
+    }
 }

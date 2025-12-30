@@ -27,6 +27,11 @@ public class Movie {
     private final int runtimeMinutes;
 
     /**
+     * The Discord scheduled event ID for this movie.
+     */
+    private Long scheduledEventId;
+
+    /**
      * Constructor to make a {@code Movie}.
      * @param title the movies title
      * @param year the movies release year
@@ -71,5 +76,21 @@ public class Movie {
      */
     public int getRuntimeMinutes(){
         return runtimeMinutes;
+    }
+
+    /**
+     * Returns the Discord scheduled event ID for this movie.
+     * @return the event ID, or {@code null} if none exists
+     */
+    public Long getScheduledEventId(){
+        return scheduledEventId;
+    }
+
+    /**
+     * Sets the Discord scheduled event ID for this movie.
+     * @param id the scheduled event
+     */
+    public void setScheduledEventId(Long id){
+        this.scheduledEventId = id;
     }
 }

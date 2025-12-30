@@ -200,8 +200,14 @@ public class MovieScheduler {
                 .setDescription("Movie Night: " + movie.getTitle() + " (" + movie.getYear() + ")");
 
                 action.queue(
-                        success -> System.out.println("Created event for: " + movie.getTitle()),
-                        Throwable::printStackTrace
+                        event ->{
+                            movie.setScheduledEventId(event.getIdLong());
+                            System.out.println("Created event for: " + movie.getTitle() + " (eventId=" + event.getId() + ")");
+                        },
+                        error ->{
+                            System.err.println("Failed to create event for " + movie.getTitle());
+                            error.printStackTrace();
+                        }
                 );
     }
 

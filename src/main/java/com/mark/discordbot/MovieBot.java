@@ -252,6 +252,7 @@ public class MovieBot extends ListenerAdapter
         // If only one match → delete immediately
         if (matchingIndexes.size() == 1) {
             Movie movie = allMovies.get(matchingIndexes.getFirst());
+            deleteScheduledEventIfPresent(movie, event.getGuild()); //remove scheduled event before deleting movie
             storage.removeMovie(movie);
 
             event.getHook()
@@ -361,6 +362,7 @@ public class MovieBot extends ListenerAdapter
             }
 
             Movie movie = movies.get(index);
+            deleteScheduledEventIfPresent(movie, guild); //remove scheduled event before deleting movie
             storage.removeMovie(movie);
 
             event.getHook().sendMessage("🗑Removed **" + movie.getTitle() + "**.").setEphemeral(true).queue();
@@ -531,5 +533,23 @@ public class MovieBot extends ListenerAdapter
             return false;
         }
         return true;
+    }
+
+    /**
+     * Deletes a scheduled event if it exists.
+     * @param movie the movie to remove
+     * @param guild the guild to remove the movie from
+     */
+    private void deleteScheduledEventIfPresent(Movie movie, Guild guild){
+        Long eventId = movie.getScheduledEventId();
+        if(eventId == null) return;
+
+        guild.retrieveScheduledEventById(eventId).queue(
+                event -> event.delete().queue(
+                        success -> System.out.println("Deleted event for " +movie.getTitle()),
+                        error -> System.out.println("Failed to delete event for " + movie.getTitle())
+                ),
+                error -> System.err.println("Scheduled event not found for " + movie.getTitle())
+        );
     }
 }

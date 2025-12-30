@@ -1,6 +1,6 @@
 # Discord MovieBot
 Author: Mark Bowerman
-Version 2.22
+Version 2.23
 
 This project is licensed under the GNU GPLv3 License - see the LICENSE file for details.
 
@@ -11,7 +11,7 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 - [x] Dropdown functionality for multiple results
 - [x] Remove movies by entering a movie's name
 - [x] Display movie posters on embed
-- [x] Automatically create and schedule Discord scheduled events
+- [x] Automatically create, schedule, and delete Discord scheduled events
       
 ## Future Ideas:
 - [ ] Rearrange movie list as needed when scheduling a movie

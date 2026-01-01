@@ -158,9 +158,10 @@ public class MovieBot extends ListenerAdapter
         embed.addField(
                 "/addmovie", """
                         Adds a movie to the movie list.
+                        
                         **Options:**
-                        'name' (required) - Movie Title
-                        'year' (optional) - Release Year
+                        `name` (required) - Movie Title
+                        `year` (optional) - Release Year
                         """, false
         );
 
@@ -168,6 +169,7 @@ public class MovieBot extends ListenerAdapter
                 "/removemovie",
                 """
                         Removes a movie from the list using its name.
+                        
                         **Options:**
                         `query` (required) – Movie Title""", false
         );

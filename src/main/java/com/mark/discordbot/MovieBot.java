@@ -357,7 +357,7 @@ public class MovieBot extends ListenerAdapter
             List<Movie> movies = storage.getMovies();
 
             if (index < 0 || index >= movies.size()) {
-                event.reply("That movie no longer exists.").setEphemeral(true).queue();
+                event.getHook().sendMessage("That movie no longer exists.").setEphemeral(true).queue();
                 return;
             }
 
@@ -512,9 +512,13 @@ public class MovieBot extends ListenerAdapter
     private Movie buildMovieFromTmdb(JsonObject movieJson) {
         String title = movieJson.get("title").getAsString();
 
-        int year = movieJson.has("release_date") && !movieJson.get("release_date").isJsonNull()
-                ? Integer.parseInt(movieJson.get("release_date").getAsString().substring(0, 4))
-                : 0;
+        int year = 0;
+        if (movieJson.has("release_date") && !movieJson.get("release_date").isJsonNull()){
+            String release = movieJson.get("release_date").getAsString();
+            if (release.length() >= 4){
+                year = Integer.parseInt(release.substring(0,4));
+            }
+        }
 
         String poster = movieJson.has("poster_path") && !movieJson.get("poster_path").isJsonNull()
                 ? "https://image.tmdb.org/t/p/w500" + movieJson.get("poster_path").getAsString()
@@ -527,7 +531,8 @@ public class MovieBot extends ListenerAdapter
 
     private boolean requireGuild(SlashCommandInteractionEvent event) {
         if (event.getGuild() == null) {
-            event.reply("This command can only be used inside a server.")
+            event.getHook()
+                    .sendMessage("This command can only be used inside a server.")
                     .setEphemeral(true)
                     .queue();
             return false;

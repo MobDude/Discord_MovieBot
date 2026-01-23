@@ -16,6 +16,7 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 ## Future Ideas:
 - [ ] Rearrange movie list as needed when scheduling a movie
 - [ ] Add more details to the Discord scheduled events
+- [ ] Create ability for each Discord guild to have its own context
 - [ ] Lock and unlock movie theatre voice channel
 - [ ] Pinging @moviegoer role when event starts
 - [ ] Remove scheduled events and reschedule the ones after it when removing a movie from the list

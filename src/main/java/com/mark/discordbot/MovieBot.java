@@ -194,6 +194,14 @@ public class MovieBot extends ListenerAdapter
      * </p>
      */
     private void handleAddMovie(SlashCommandInteractionEvent event){
+
+        //keep number of queued movies under 30.
+        int MAX_MOVIE_QUEUE = 30;
+        if(storage.getMovies().size() >= MAX_MOVIE_QUEUE){
+            event.getHook().sendMessage("Maximum number of movies are scheduled. Please try again later.").setEphemeral(true).queue();
+            return;
+        }
+
         String name = event.getOption("name").getAsString();
         Integer year = event.getOption("year") != null ? event.getOption("year").getAsInt() : null;
 

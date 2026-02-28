@@ -1,4 +1,4 @@
-package com.mark.discordbot;
+package com.mark.matrixbot;
 
 /**
  * Stores data related to a movie into a {@code Movie}.

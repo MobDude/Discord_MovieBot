@@ -1,4 +1,4 @@
-package com.mark.discordbot;
+package com.mark.matrixbot;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;

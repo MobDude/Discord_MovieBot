@@ -1,4 +1,4 @@
-package com.mark.discordbot;
+package com.mark.matrixbot;
 
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.ScheduledEvent;

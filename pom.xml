@@ -1,7 +1,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>com.mark.discordbot</groupId>
+  <groupId>com.mark.matrixbot</groupId>
   <artifactId>movie-bot</artifactId>
   <packaging>jar</packaging>
   <version>2.11</version>
@@ -9,11 +9,12 @@
   <url>http://maven.apache.org</url>
   <dependencies>
 
-    <!-- Java discord API -->
+    <!-- Matrix SDK -->
     <dependency>
-      <groupId>net.dv8tion</groupId>
-      <artifactId>JDA</artifactId>
-      <version>6.2.0</version>
+      <groupId>io.github.ma1uta.matrix</groupId>
+      <artifactId>bot-sdk</artifactId>
+      <version>0.2</version>
+      <scope>compile</scope>
     </dependency>
 
     <!-- Json Library -->
@@ -54,7 +55,7 @@
               <transformers>
                 <!-- Set your main class here -->
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                  <mainClass>com.mark.discordbot.MovieBot</mainClass>
+                  <mainClass>com.mark.matrixbot.MatrixRunner</mainClass>
                 </transformer>
               </transformers>
             </configuration>

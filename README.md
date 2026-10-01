@@ -14,9 +14,9 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 - [x] Automatically create, schedule, and delete Discord scheduled events
 - [x] Remove scheduled events and reschedule the ones after it when removing a movie from the list
 - [x] Rearrange movie list as needed when scheduling a movie
+- [x]  Allow for break in movie schedule
       
 ## Future Ideas:
-- [ ] Allow for break in movie schedule
 - [ ] Add more details to the Discord scheduled events
 - [ ] Create ability for each Discord guild to have its own context
 - [ ] Lock and unlock movie theatre voice channel

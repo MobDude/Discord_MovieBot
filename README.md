@@ -39,6 +39,11 @@ This project is licensed under the GNU GPLv3 License - see the LICENSE file for 
 | /edittimeslot | index (int, required), day (string, required), time (24-hour time HH:mm, required), long_allowed, (boolean, required), | Edits a scheduling slot. Admin only. |
 | /movemovie | from (int, required), to (int, required) | Moves a movie to a different scheduling position. Admin only. |
 | /swapmovies | first (int, required), second (int, required) | Swaps two movies in the scheduling order. Admin only. |
+| /break | date ( YYYY-MM-DD, required) | Skip a movie night on a specific date. |
+| /breaks | N/A | List scheduled movie-night breaks. |
+| /restorebreak | date ( YYYY-MM-DD, required) | Restore a previously skipped movie night on a specific date. |
+
+
 
 ## Dependencies
 - JDA (Java Discord API)

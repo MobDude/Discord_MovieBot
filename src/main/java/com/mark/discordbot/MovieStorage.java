@@ -3,9 +3,11 @@ package com.mark.discordbot;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
+
 import java.io.*;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -22,7 +24,7 @@ public class MovieStorage {
     private static final String FILE_PATH = "movies.json";
 
     /**
-     * Gson instance is configured to be human-readable JSon output.
+     * Gson instance is configured to be human-readable JSON output.
      */
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -42,15 +44,15 @@ public class MovieStorage {
      * Returns the list of currently stored movies.
      * @return the list of movies
      */
-    public List<Movie> getMovies() {
-        return movies;
+    public synchronized List<Movie> getMovies() {
+        return new ArrayList<>(movies);
     }
 
     /**
      * Adds a movie to storage and saves the change to disk.
      * @param movie the movie to add
      */
-    public void addMovie(Movie movie) {
+    public synchronized void addMovie(Movie movie) {
         movies.add(movie);
         save();
     }
@@ -59,9 +61,53 @@ public class MovieStorage {
      * Removes a movie from storage and saves the change to disk.
      * @param movie the movie to remove
      */
-    public void removeMovie(Movie movie) {
+    public synchronized void removeMovie(Movie movie) {
         movies.remove(movie);
         save();
+    }
+
+    public synchronized boolean moveMovie(int fromIndex, int toIndex) {
+        if (!isValidIndex(fromIndex) || !isValidIndex(toIndex)) {
+            return false;
+        }
+
+        if (fromIndex == toIndex) {
+            return true;
+        }
+
+        Movie movie = movies.remove(fromIndex);
+        movies.add(toIndex, movie);
+        save();
+        return true;
+    }
+
+    public synchronized boolean swapMovies(int firstIndex, int secondIndex) {
+        if (!isValidIndex(firstIndex) || !isValidIndex(secondIndex)) {
+            return false;
+        }
+
+        if (firstIndex == secondIndex) {
+            return true;
+        }
+
+        Collections.swap(movies, firstIndex, secondIndex);
+        save();
+        return true;
+    }
+
+    private boolean isValidIndex(int index) {
+        return index >= 0 && index < movies.size();
+    }
+
+    /**
+     * Saves the current movie list to the JSON file.
+     */
+    private synchronized void save() {
+        try (Writer writer = new FileWriter(FILE_PATH)) {
+            GSON.toJson(movies, writer);
+        } catch (IOException e) {
+            System.err.println("Failed to save movies: " + e.getMessage());
+        }
     }
 
     /**
@@ -73,7 +119,6 @@ public class MovieStorage {
      */
     private List<Movie> load() {
         File file = new File(FILE_PATH);
-
         if (!file.exists()) {
             return new ArrayList<>();
         }
@@ -81,24 +126,10 @@ public class MovieStorage {
         try (Reader reader = new FileReader(file)) {
             Type listType = new TypeToken<List<Movie>>(){}.getType();
             List<Movie> loaded = GSON.fromJson(reader, listType);
-
-            //gson may return null of the file is empty or broken
             return loaded != null ? loaded : new ArrayList<>();
-
         } catch (IOException e) {
-            e.printStackTrace();
             return new ArrayList<>();
         }
     }
 
-    /**
-     * Saves the current movie list to the JSON file.
-     */
-    private void save() {
-        try (Writer writer = new FileWriter(FILE_PATH)) {
-            GSON.toJson(movies, writer);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
 }

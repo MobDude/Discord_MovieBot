@@ -3,12 +3,13 @@ package com.mark.discordbot;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
 import java.net.URI;
-import java.net.URL;
 import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 /**
  * Client for interacting with The Movie Database (TMDb) API,
@@ -23,6 +24,8 @@ public class TMDb {
      */
     private final String apiKey;
 
+    private final HttpClient httpClient;
+
     /**
      * Base URL for TMDb API v3.
      */
@@ -31,7 +34,7 @@ public class TMDb {
     /**
      * Timeout duration in milliseconds.
      */
-    private static final int TIMEOUT_MS = 5000;
+    //private static final int TIMEOUT_MS = 5000;
 
     /**
      * Constructs a new TMDb API client.
@@ -42,6 +45,7 @@ public class TMDb {
             throw new IllegalArgumentException("TMDb API key must not be null or blank");
         }
         this.apiKey = apikey;
+        this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     }
 
     /**
@@ -51,18 +55,14 @@ public class TMDb {
      */
     private JsonObject makeRequest(String urlStr) {
         try {
-            URL url = URI.create(urlStr).toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
+            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(urlStr)).GET().build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-            return JsonParser.parseReader(
-                    new InputStreamReader(conn.getInputStream())
-            ).getAsJsonObject();
+            if(response.statusCode() != 200) return null;
+            return JsonParser.parseString(response.body()).getAsJsonObject();
 
         } catch (Exception e) {
-            System.err.println("TMDb request failed: " + urlStr);
+            System.err.println("TMDb request failed: " + e.getMessage());
             return null;
         }
     }
@@ -74,33 +74,11 @@ public class TMDb {
      * @return a {@link JsonArray} of search results, or an empty array if the request fails
      */
     public JsonArray searchMovies(String query, Integer year){
-
         String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
-
-        String url = BASE_URL + "/search/movie"
-                + "?api_key=" + apiKey
-                + "&query=" + encodedQuery
-                + (year != null ? "&year=" + year : "");
+        String url = String.format("%s/search/movie?api_key=%s&query=%s%s", BASE_URL, apiKey, encodedQuery, (year !=null ? "&year=" + year : ""));
 
         JsonObject root = makeRequest(url);
-
-        if ((root == null) || !root.has("results")){
-            return new JsonArray();
-        }
-
-        return root.getAsJsonArray("results");
-    }
-
-    /**
-     * Retrieves full movie details from TMDb by movie ID.
-     * @param id the TMDb movie ID
-     * @return a {@link JsonObject} containing movie details, or {@code null} on failure
-     */
-    public JsonObject getMovieById(String id) {
-        String url = BASE_URL + "/movie/" + id
-                + "?api_key=" + apiKey;
-
-        return makeRequest(url);
+        return (root != null && root.has("results")) ? root.getAsJsonArray("results") : new JsonArray();
     }
 
     /**
@@ -109,16 +87,20 @@ public class TMDb {
      * @return the runtime in minutes, or {@code 0} if unavailable
      */
     public int getRuntime(int movieId){
-        String url = BASE_URL + "/movie/" + movieId
-                + "?api_key=" + apiKey;
-
-        JsonObject obj = makeRequest(url);
-
-        if (obj != null && obj.has("runtime") && !obj.get("runtime").isJsonNull()) {
-            return obj.get("runtime").getAsInt();
-        }
-
-        return 0;
+        JsonObject obj = makeRequest(BASE_URL + "/movie/" + movieId + "?api_key=" + apiKey);
+        return (obj != null && obj.has("runtime") && !obj.get("runtime").isJsonNull())
+                ? obj.get("runtime").getAsInt() : 0;
     }
+
+    /**
+     * Retrieves full movie details from TMDb by movie ID.
+     * @param id the TMDb movie ID
+     * @return a {@link JsonObject} containing movie details, or {@code null} on failure
+     */
+    public JsonObject getMovieById(String id) {
+        return makeRequest(BASE_URL + "/movie/" + id + "?api_key=" + apiKey);
+    }
+
+
 
 }

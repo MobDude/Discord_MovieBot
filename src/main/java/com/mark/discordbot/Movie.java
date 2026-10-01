@@ -1,96 +1,49 @@
 package com.mark.discordbot;
 
 /**
- * Stores data related to a movie into a {@code Movie}.
- * Stores the movie's title, release year, poster URL, and runtime in minutes.
+ * Represents a movie and its associated Discord event data.
  */
 public class Movie {
 
-    /**
-     * The title of the movie.
-     */
     private final String title;
-
-    /**
-     * The release year of the movie.
-     */
     private final int year;
-
-    /**
-     * The URL to the movie's poster.
-     */
     private final String posterURL;
-
-    /**
-     * The movie's runtime in minutes.
-     */
     private final int runtimeMinutes;
+    private Long scheduledEventId; // Mutable: set after Discord event creation
 
-    /**
-     * The Discord scheduled event ID for this movie.
-     */
-    private Long scheduledEventId;
-
-    /**
-     * Constructor to make a {@code Movie}.
-     * @param title the movies title
-     * @param year the movies release year
-     * @param posterURL the URl to the movies poster
-     * @param runtimeMinutes the movies runtime in minutes
-     */
-    public Movie(String title, int year, String posterURL, int runtimeMinutes){
+    public Movie(String title, int year, String posterURL, int runtimeMinutes) {
         this.title = title;
         this.year = year;
         this.posterURL = posterURL;
         this.runtimeMinutes = runtimeMinutes;
+    }
 
+    // Getters
+    public String getTitle() { return title; }
+    public int getYear() { return year; }
+    public String getPosterURL() { return posterURL; }
+    public int getRuntimeMinutes() { return runtimeMinutes; }
+    public Long getScheduledEventId() { return scheduledEventId; }
+
+    // Setter for Discord Sync
+    public void setScheduledEventId(Long id) { this.scheduledEventId = id; }
+
+    /**
+     * Helper for consistent naming across embeds and events.
+     * Example: "The Matrix (1999)"
+     */
+    public String getDisplayTitle() {
+        return String.format("%s (%s)", title, (year > 0 ? year : "Unknown"));
     }
 
     /**
-     * Returns the title of the movie.
-     * @return the title to return
+     * Formats runtime into a human-readable string.
+     * Example: "2h 15m"
      */
-    public String getTitle() {
-        return title;
-    }
-
-    /**
-     * Returns the release year of the movie.
-     * @return the year to return
-     */
-    public int getYear() {
-        return year;
-    }
-
-    /**
-     * Returns the URL of the movie's poster.
-     * @return the URL to return
-     */
-    public String getPosterURL() {
-        return posterURL;
-    }
-
-    /**
-     * Returns the runtime of the movies in minutes.
-     * @return the runtime to return
-     */
-    public int getRuntimeMinutes(){
-        return runtimeMinutes;
-    }
-
-    /**
-     * Returns the Discord scheduled event ID for this movie.
-     * @return the event ID, or {@code null} if none exists
-     */
-    public Long getScheduledEventId(){
-        return scheduledEventId;
-    }
-
-    /**
-     * Sets the Discord scheduled event ID for this movie.
-     * @param id the scheduled event
-     */
-    public void setScheduledEventId(Long id){
-        this.scheduledEventId = id;
+    public String getFormattedRuntime() {
+        if (runtimeMinutes <= 0) return "Unknown";
+        int hours = runtimeMinutes / 60;
+        int minutes = runtimeMinutes % 60;
+        return (hours > 0) ? String.format("%dh %dm", hours, minutes) : minutes + "m";
     }
 }

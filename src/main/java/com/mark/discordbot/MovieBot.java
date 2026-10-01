@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.components.selections.StringSelectMenu;
 import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.entities.Guild;
@@ -18,9 +19,14 @@ import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 
 
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
+import java.util.*;
 
 /**
  * Main entry point and event handler for MovieBot.
@@ -42,6 +48,11 @@ public class MovieBot extends ListenerAdapter
     private final MovieStorage storage;
 
     /**
+     * Persistent storage for movie breaks.
+     */
+    private final BreakStorage breakStorage;
+
+    /**
      * Client for querying the TMDb API.
      */
     private final TMDb tmdb;
@@ -51,16 +62,22 @@ public class MovieBot extends ListenerAdapter
      */
     private final MovieScheduler scheduler;
 
-    /**
-     * The amount of minutes to add as a buffer to scheduled events.
-     */
-    private static final int EVENT_BUFFER_MINUTES = 15;
+    private final SlotStorage slotStorage;
+
+    private int maxMovies = 16;
 
 
     public MovieBot(String tmdbKey) {
         this.tmdb = new TMDb(tmdbKey);
         this.storage = new MovieStorage();
         this.scheduler = new MovieScheduler();
+        this.slotStorage = new SlotStorage();
+        this.breakStorage = new BreakStorage();
+        this.scheduler.setSlots(slotStorage.getSlots());
+
+        for (LocalDate date : breakStorage.getBreaks()){
+            this.scheduler.addBreak(date);
+        }
     }
 
 
@@ -72,16 +89,15 @@ public class MovieBot extends ListenerAdapter
      */
     public static void main(String[] args) throws InterruptedException {
 
-        // Load .env
-        String token = System.getenv("DISCORD_TOKEN");
+        String token = getConfigValue("DISCORD_TOKEN");
         if (token == null) {
-            System.out.println("ERROR: DISCORD_TOKEN not found in .env");
+            System.out.println("ERROR: DISCORD_TOKEN not found in environment variables or .env");
             return;
         }
 
-        String tmdbKey = System.getenv("TMDB_KEY");
+        String tmdbKey = getConfigValue("TMDB_KEY");
         if (tmdbKey == null) {
-            System.out.println("ERROR: TMDB_KEY not found in .env");
+            System.out.println("ERROR: TMDB_KEY not found in environment variables or .env");
             return;
         }
 
@@ -112,13 +128,121 @@ public class MovieBot extends ListenerAdapter
                         Commands.slash("movielist", "Shows the movie list"),
 
                         //add help command
-                        Commands.slash("moviehelp", "Displays command help for the Movie Bot.")
+                        Commands.slash("moviehelp", "Displays command help for the Movie Bot."),
+
+                        Commands.slash("maxmovies", "Set the maximum number of movies in the move list.")
+                                .addOption(OptionType.INTEGER, "max", "Maximum number of movies", true),
+
+                        Commands.slash("timeslots", "Lists the movie scheduling time slots."),
+
+                        Commands.slash("addtimeslot", "Adds a movie scheduling time slot.")
+                                .addOption(OptionType.STRING, "day", "Day of week, for example sunday or tue", true)
+                                .addOption(OptionType.STRING, "time", "24-hour time in HH:mm format, for example 19:45", true)
+                                .addOption(OptionType.BOOLEAN, "long_allowed", "Whether movies over 150 minutes can use this slot", true),
+
+                        Commands.slash("removetimeslot", "Removes a movie scheduling time slot.")
+                                .addOption(OptionType.INTEGER, "index", "Slot number from /timeslots", true),
+
+                        Commands.slash("edittimeslot", "Edits a movie scheduling time slot.")
+                                .addOption(OptionType.INTEGER, "index", "Slot number from /timeslots", true)
+                                .addOption(OptionType.STRING, "day", "Day of week, for example sunday or tue", true)
+                                .addOption(OptionType.STRING, "time", "24-hour time in HH:mm format, for example 19:45", true)
+                                .addOption(OptionType.BOOLEAN, "long_allowed", "Whether movies over 150 minutes can use this slot", true),
+
+                        Commands.slash("movemovie", "Moves a movie to a different scheduling position.")
+                                .addOption(OptionType.INTEGER, "from", "Current movie number from /movielist", true)
+                                .addOption(OptionType.INTEGER, "to", "New movie number in the schedule", true),
+
+                        Commands.slash("swapmovies", "Swaps two movies in the scheduling order.")
+                                .addOption(OptionType.INTEGER, "first", "First movie number from /movielist", true)
+                                .addOption(OptionType.INTEGER, "second", "Second movie number from /movielist", true),
+
+                        Commands.slash("break", "Skips a movie night on a specific date.")
+                                .addOption(OptionType.STRING, "date", "Date to skip in YYYY-MM-DD format", true),
+
+                        Commands.slash("removebreak", "Removes a scheduled movie-night break.")
+                                .addOption(OptionType.STRING, "date", "Date to restore in YYYY-MM-DD format", true),
+
+                        Commands.slash("breaks", "List all scheduled movie-night breaks.")
+
                 )
                 .queue();
 
         System.out.println("MovieBot is now running!");
 
         Thread.currentThread().join();
+    }
+
+    private static String getConfigValue(String key) {
+        String envValue = System.getenv(key);
+        if (envValue != null && !envValue.isBlank()) {
+            return envValue;
+        }
+
+        return getDotEnvValue(key);
+    }
+
+    private static String getDotEnvValue(String key) {
+        Path envPath = findDotEnvPath();
+        if (envPath == null) {
+            return null;
+        }
+
+        try {
+            for (String rawLine : Files.readAllLines(envPath)) {
+                String line = rawLine.trim();
+                if (line.isEmpty() || line.startsWith("#")) {
+                    continue;
+                }
+
+                if (line.startsWith("export ")) {
+                    line = line.substring("export ".length()).trim();
+                }
+
+                int equalsIndex = line.indexOf('=');
+                if (equalsIndex <= 0) {
+                    continue;
+                }
+
+                String name = line.substring(0, equalsIndex).trim();
+                if (!name.equals(key)) {
+                    continue;
+                }
+
+                String value = line.substring(equalsIndex + 1).trim();
+                return stripOptionalQuotes(value);
+            }
+        } catch (IOException e) {
+            System.err.println("Failed to read .env: " + e.getMessage());
+        }
+
+        return null;
+    }
+
+    private static Path findDotEnvPath() {
+        Path current = Path.of("").toAbsolutePath();
+        while (current != null) {
+            Path candidate = current.resolve(".env");
+            if (Files.isRegularFile(candidate)) {
+                return candidate;
+            }
+
+            current = current.getParent();
+        }
+
+        return null;
+    }
+
+    private static String stripOptionalQuotes(String value) {
+        if (value.length() >= 2) {
+            char first = value.charAt(0);
+            char last = value.charAt(value.length() - 1);
+            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+                return value.substring(1, value.length() - 1);
+            }
+        }
+
+        return value;
     }
 
     /**
@@ -144,9 +268,226 @@ public class MovieBot extends ListenerAdapter
                 handleMovieHelp(event);
                 break;
 
+            case "maxmovies":
+                handleMaxMovies(event);
+                break;
+
+            case "timeslots":
+                handleTimeSlots(event);
+                break;
+
+            case "addtimeslot":
+                handleAddTimeSlot(event);
+                break;
+
+            case "removetimeslot":
+                handleRemoveTimeSlot(event);
+                break;
+
+            case "edittimeslot":
+                handleEditTimeSlot(event);
+                break;
+
+            case "movemovie":
+                handleMoveMovie(event);
+                break;
+
+            case "swapmovies":
+                handleSwapMovies(event);
+                break;
+
+            case "break":
+                handleBreak(event);
+                break;
+
+            case "removebreak":
+                handleRemoveBreak(event);
+                break;
+
+            case "breaks":
+                handleBreaks(event);
+                break;
+
             default:
                 event.reply("Unknown command.").setEphemeral(true).queue();
         }
+    }
+
+    /**
+     * Sets the maximum allowed movies in the movie list.
+     * @param event the slash command interaction event.
+     */
+    private void handleMaxMovies(SlashCommandInteractionEvent event) {
+
+        var opt = event.getOption("max");
+        int num = opt != null ? opt.getAsInt() : 0;
+
+        if (!requireAdmin(event)) return;
+
+        //If inputted number is invalid
+        if (num < 0){
+            event.reply("Please input an number greater than or equal to 0.").setEphemeral(true).queue();
+            return;
+        }
+
+        maxMovies = num;
+        event.reply("Set max movies to " + maxMovies + ".").setEphemeral(true).queue();
+    }
+
+    private void handleTimeSlots(SlashCommandInteractionEvent event) {
+        if (!requireGuildForReply(event)) return;
+
+        List<MovieScheduler.WeeklySlot> slots = slotStorage.getSlots();
+        StringBuilder description = new StringBuilder();
+        for (int i = 0; i < slots.size(); i++) {
+            description.append(i + 1)
+                    .append(". ")
+                    .append(formatSlot(slots.get(i)))
+                    .append('\n');
+        }
+
+        if (description.isEmpty()) {
+            description.append("No time slots are configured.");
+        }
+
+        EmbedBuilder embed = new EmbedBuilder();
+        embed.setTitle("Movie Time Slots");
+        embed.setColor(0x570000);
+        embed.setDescription(description.toString());
+
+        event.replyEmbeds(embed.build()).setEphemeral(true).queue();
+    }
+
+    private void handleAddTimeSlot(SlashCommandInteractionEvent event) {
+        if (!requireAdmin(event)) return;
+
+        MovieScheduler.WeeklySlot slot = parseSlotOptions(event);
+        if (slot == null) return;
+
+        slotStorage.addSlot(slot);
+        refreshSchedulerSlots();
+        resyncScheduledEvents(event.getGuild());
+
+        event.reply("Added time slot: " + formatSlot(slot)).setEphemeral(true).queue();
+    }
+
+    private void handleRemoveTimeSlot(SlashCommandInteractionEvent event) {
+        if (!requireAdmin(event)) return;
+
+        List<MovieScheduler.WeeklySlot> slots = slotStorage.getSlots();
+        if (slots.size() <= 1) {
+            event.reply("At least one time slot must remain configured.").setEphemeral(true).queue();
+            return;
+        }
+
+        int index = Objects.requireNonNull(event.getOption("index")).getAsInt() - 1;
+        if (index < 0 || index >= slots.size()) {
+            event.reply("Invalid slot number. Use `/timeslots` to see the current slot numbers.")
+                    .setEphemeral(true)
+                    .queue();
+            return;
+        }
+
+        MovieScheduler.WeeklySlot removed = slots.get(index);
+        slotStorage.removeSlot(index);
+        refreshSchedulerSlots();
+        resyncScheduledEvents(event.getGuild());
+
+        event.reply("Removed time slot: " + formatSlot(removed)).setEphemeral(true).queue();
+    }
+
+    private void handleEditTimeSlot(SlashCommandInteractionEvent event) {
+        if (!requireAdmin(event)) return;
+
+        int index = Objects.requireNonNull(event.getOption("index")).getAsInt() - 1;
+        List<MovieScheduler.WeeklySlot> slots = slotStorage.getSlots();
+        if (index < 0 || index >= slots.size()) {
+            event.reply("Invalid slot number. Use `/timeslots` to see the current slot numbers.")
+                    .setEphemeral(true)
+                    .queue();
+            return;
+        }
+
+        MovieScheduler.WeeklySlot slot = parseSlotOptions(event);
+        if (slot == null) return;
+
+        slotStorage.updateSlot(index, slot);
+        refreshSchedulerSlots();
+        resyncScheduledEvents(event.getGuild());
+
+        event.reply("Updated time slot " + (index + 1) + " to: " + formatSlot(slot))
+                .setEphemeral(true)
+                .queue();
+    }
+
+    private void handleMoveMovie(SlashCommandInteractionEvent event) {
+        if (!requireAdmin(event)) return;
+
+        List<Movie> movies = storage.getMovies();
+        if (movies.isEmpty()) {
+            event.reply("The movie list is currently empty.").setEphemeral(true).queue();
+            return;
+        }
+
+        int fromIndex = Objects.requireNonNull(event.getOption("from")).getAsInt() - 1;
+        int toIndex = Objects.requireNonNull(event.getOption("to")).getAsInt() - 1;
+        if (!isValidMovieIndex(fromIndex, movies) || !isValidMovieIndex(toIndex, movies)) {
+            event.reply("Invalid movie number. Use `/movielist` to see the current movie numbers.")
+                    .setEphemeral(true)
+                    .queue();
+            return;
+        }
+
+        Movie movie = movies.get(fromIndex);
+        if (fromIndex == toIndex) {
+            event.reply("That movie is already in position " + (toIndex + 1) + ".")
+                    .setEphemeral(true)
+                    .queue();
+            return;
+        }
+
+        storage.moveMovie(fromIndex, toIndex);
+        resyncScheduledEvents(event.getGuild());
+
+        event.reply("Moved **" + movie.getTitle() + "** from #" + (fromIndex + 1) + " to #" + (toIndex + 1) + ".")
+                .setEphemeral(true)
+                .queue();
+    }
+
+    private void handleSwapMovies(SlashCommandInteractionEvent event) {
+        if (!requireAdmin(event)) return;
+
+        List<Movie> movies = storage.getMovies();
+        if (movies.isEmpty()) {
+            event.reply("The movie list is currently empty.").setEphemeral(true).queue();
+            return;
+        }
+
+        int firstIndex = Objects.requireNonNull(event.getOption("first")).getAsInt() - 1;
+        int secondIndex = Objects.requireNonNull(event.getOption("second")).getAsInt() - 1;
+        if (!isValidMovieIndex(firstIndex, movies) || !isValidMovieIndex(secondIndex, movies)) {
+            event.reply("Invalid movie number. Use `/movielist` to see the current movie numbers.")
+                    .setEphemeral(true)
+                    .queue();
+            return;
+        }
+
+        Movie firstMovie = movies.get(firstIndex);
+        Movie secondMovie = movies.get(secondIndex);
+        if (firstIndex == secondIndex) {
+            event.reply("Pick two different movie positions to swap.")
+                    .setEphemeral(true)
+                    .queue();
+            return;
+        }
+
+        storage.swapMovies(firstIndex, secondIndex);
+        resyncScheduledEvents(event.getGuild());
+
+        event.reply("Swapped #" + (firstIndex + 1) + " **" + firstMovie.getTitle() + "** with #" +
+                        (secondIndex + 1) + " **" + secondMovie.getTitle() + "**.")
+                .setEphemeral(true)
+                .queue();
     }
 
     private void handleMovieHelp(SlashCommandInteractionEvent event) {
@@ -171,7 +512,7 @@ public class MovieBot extends ListenerAdapter
                         Removes a movie from the list using its name.
                         
                         **Options:**
-                        `query` (required) – Movie Title""", false
+                        `query` (required) - Movie Title""", false
         );
 
         embed.addField(
@@ -180,6 +521,97 @@ public class MovieBot extends ListenerAdapter
 
         embed.addField(
                 "/moviehelp", "Displays this help message.", false
+        );
+
+        embed.addField(
+                "/maxmovies", """
+                                    Set the max number of movies in the movie list.
+                                    
+                                    **Options**
+                                    'max' (required) - Max number of Movies
+                                    """, false
+
+        );
+
+        embed.addField(
+                "/timeslots", "Shows the configured movie scheduling slots.", false
+        );
+
+        embed.addField(
+                "/addtimeslot", """
+                        Adds a scheduling slot. Admin only.
+                        
+                        **Options:**
+                        `day` (required) - Day of week
+                        `time` (required) - 24-hour HH:mm time
+                        `long_allowed` (required) - Whether long movies can use this slot
+                        """, false
+        );
+
+        embed.addField(
+                "/removetimeslot", """
+                        Removes a scheduling slot. Admin only.
+                        
+                        **Options:**
+                        `index` (required) - Slot number from /timeslots
+                        """, false
+        );
+
+        embed.addField(
+                "/edittimeslot", """
+                        Edits a scheduling slot. Admin only.
+                        
+                        **Options:**
+                        `index` (required) - Slot number from /timeslots
+                        `day` (required) - Day of week
+                        `time` (required) - 24-hour HH:mm time
+                        `long_allowed` (required) - Whether long movies can use this slot
+                        """, false
+        );
+
+        embed.addField(
+                "/movemovie", """
+                        Moves a movie to a different scheduling position. Admin only.
+                        
+                        **Options:**
+                        `from` (required) - Current movie number from /movielist
+                        `to` (required) - New movie number in the schedule
+                        """, false
+        );
+
+        embed.addField(
+                "/swapmovies", """
+                        Swaps two movies in the scheduling order. Admin only.
+                        
+                        **Options:**
+                        `first` (required) - First movie number from /movielist
+                        `second` (required) - Second movie number from /movielist
+                        """, false
+        );
+
+        embed.addField(
+                "/break", """
+                        Skip a movie night on a specific date.
+                        
+                        **Options:**
+                        'date' (required) Date to skip formatted as YYYY-MM-DD
+                        """, false
+        );
+
+        embed.addField(
+                "/removebreak", """
+                        Restore a previously skipped movie night on a specific date.
+                        
+                        **Options:**
+                        'date' (required) Date to restore formatted as YYYY-MM-DD
+                        """, false
+        );
+
+        embed.addField(
+                "/breaks", """
+                        List scheduled movie-night breaks.
+                      
+                        """, false
         );
 
         embed.setFooter("MovieBot");
@@ -195,23 +627,21 @@ public class MovieBot extends ListenerAdapter
      */
     private void handleAddMovie(SlashCommandInteractionEvent event){
 
-        //keep number of queued movies under 30.
-        int MAX_MOVIE_QUEUE = 30;
-        if(storage.getMovies().size() >= MAX_MOVIE_QUEUE){
+        event.deferReply().setEphemeral(true).queue();
+
+        if(storage.getMovies().size() >= maxMovies){
             event.getHook().sendMessage("Maximum number of movies are scheduled. Please try again later.").setEphemeral(true).queue();
             return;
         }
 
-        String name = event.getOption("name").getAsString();
-        Integer year = event.getOption("year") != null ? event.getOption("year").getAsInt() : null;
-
-        event.deferReply().setEphemeral(true).queue();
+        String name = Objects.requireNonNull(event.getOption("name")).getAsString();
+        Integer year = event.getOption("year") != null ? Objects.requireNonNull(event.getOption("year")).getAsInt() : null;
 
         if (!requireGuild(event)) return;
 
         JsonArray results = tmdb.searchMovies(name, year);
 
-        if (results.isEmpty()){
+        if (results == null || results.isEmpty()){
             event.getHook().sendMessage("No movies found with that name.").setEphemeral(true).queue();
             return;
         }
@@ -219,6 +649,18 @@ public class MovieBot extends ListenerAdapter
         if (results.size() == 1){
 
             Movie movie = buildMovieFromTmdb(results.get(0).getAsJsonObject());
+
+            boolean exists = storage.getMovies().stream()
+                    .anyMatch(existing ->
+                            existing.getTitle().equalsIgnoreCase(movie.getTitle()) &&
+                                    existing.getYear() == movie.getYear()
+                    );
+
+            if (exists) {
+                event.getHook().sendMessage("That movie is already in the list.").queue();
+                return;
+            }
+
             addMovieAndSchedule(movie, event.getGuild());
 
             event.getHook().sendMessage("Added **" + movie.getTitle() + "** (" + movie.getYear() + ")").setEphemeral(true).queue();
@@ -238,7 +680,7 @@ public class MovieBot extends ListenerAdapter
      * </p>
      */
     private void handleRemoveMovie(SlashCommandInteractionEvent event){
-        String query = event.getOption("query").getAsString();
+        String query = Objects.requireNonNull(event.getOption("query")).getAsString();
         List<Movie> allMovies = storage.getMovies();
 
         event.deferReply().setEphemeral(true).queue(); // ACKNOWLEDGE ONCE
@@ -259,11 +701,12 @@ public class MovieBot extends ListenerAdapter
             return;
         }
 
-        // If only one match → delete immediately
+        // If only one match, delete immediately.
         if (matchingIndexes.size() == 1) {
             Movie movie = allMovies.get(matchingIndexes.getFirst());
             deleteScheduledEventIfPresent(movie, event.getGuild()); //remove scheduled event before deleting movie
             storage.removeMovie(movie);
+            resyncScheduledEvents(event.getGuild());
 
             event.getHook()
                     .sendMessage("Removed **" + movie.getTitle() + "** from the movie list.").setEphemeral(true)
@@ -271,7 +714,7 @@ public class MovieBot extends ListenerAdapter
             return;
         }
 
-        // MULTIPLE MATCHES → build dropdown
+        // Multiple matches, build dropdown.
         StringSelectMenu.Builder menu = StringSelectMenu.create("remove-movie-select");
 
         for (int index : matchingIndexes) {
@@ -298,7 +741,12 @@ public class MovieBot extends ListenerAdapter
     private void handleMovieList(SlashCommandInteractionEvent event) {
         List<Movie> movies = storage.getMovies();
 
-        if (!requireGuild(event)) return;
+        if (event.getGuild() == null) {
+            event.reply("This command can only be used inside a server.")
+                    .setEphemeral(true)
+                    .queue();
+            return;
+        }
 
         if (movies.isEmpty()) {
             event.reply("The movie list is currently empty.").queue();
@@ -311,7 +759,113 @@ public class MovieBot extends ListenerAdapter
         var buttons = buildPageButtons(page);
 
         event.replyEmbeds(embed)
-                .addComponents(ActionRow.of(buttons.get(0), buttons.get(1)))
+                .addComponents(ActionRow.of(buttons.get(0), buttons.get(1), buttons.get(2)))
+                .queue();
+    }
+
+    /**
+     * Handles adding a break.
+     */
+    private void handleBreak(SlashCommandInteractionEvent event){
+        if (!requireAdmin(event)) return;
+        if (!requireGuildForReply(event)) return;
+
+        String dateText = Objects.requireNonNull(event.getOption("date")).getAsString();
+
+        LocalDate date;
+
+        try {
+            date = LocalDate.parse(dateText);
+        } catch (DateTimeParseException e) {
+            event.reply(
+                    "Invalid date. Use `YYYY-MM-DD`, for example `2026-10-06`."
+            ).setEphemeral(true).queue();
+            return;
+        }
+
+        if (scheduler.isBreak(date)) {
+            event.reply("There is already a movie-night break on " + date + ".")
+                    .setEphemeral(true)
+                    .queue();
+            return;
+        }
+
+        breakStorage.addBreak(date);
+        scheduler.addBreak(date);
+
+        resyncScheduledEvents(event.getGuild());
+
+        event.reply(
+                "Skipped movie night on **" + date + "**. " +
+                        "The remaining movie schedule has been shifted forward."
+        ).setEphemeral(true).queue();
+    }
+
+    /**
+     * Handles restoring a break.
+     */
+    private void handleRemoveBreak(SlashCommandInteractionEvent event) {
+        if (!requireAdmin(event)) return;
+        if (!requireGuildForReply(event)) return;
+
+        String dateText = Objects.requireNonNull(event.getOption("date")).getAsString();
+
+        LocalDate date;
+
+        try {
+            date = LocalDate.parse(dateText);
+        } catch (DateTimeParseException e) {
+            event.reply(
+                    "Invalid date. Use `YYYY-MM-DD`, for example `2026-10-06`."
+            ).setEphemeral(true).queue();
+            return;
+        }
+
+        if (!scheduler.isBreak(date)) {
+            event.reply("There is no movie-night break on " + date + ".")
+                    .setEphemeral(true)
+                    .queue();
+            return;
+        }
+
+        breakStorage.removeBreak(date);
+        scheduler.removeBreak(date);
+
+        resyncScheduledEvents(event.getGuild());
+
+        event.reply(
+                "Removed the movie-night break on **" + date + "**. " +
+                        "The movie schedule has been restored."
+        ).setEphemeral(true).queue();
+    }
+
+    private void handleBreaks(SlashCommandInteractionEvent event){
+        if (!requireAdmin(event)) return;
+        if (!requireGuildForReply(event)) return;
+
+        Set<LocalDate> breaks = breakStorage.getBreaks();
+
+        if (breaks.isEmpty()) {
+            event.reply("There are no scheduled movie-night breaks.")
+                    .setEphemeral(true)
+                    .queue();
+            return;
+        }
+
+        StringBuilder message = new StringBuilder(
+                "**Scheduled Movie-Night Breaks**\n\n"
+        );
+
+        breaks.stream()
+                .sorted()
+                .forEach(date ->
+                        message.append("• `")
+                                .append(date)
+                                .append("`\n")
+                );
+
+        event.reply(message.toString())
+                .setEphemeral(true)
                 .queue();
     }
 
@@ -329,7 +883,7 @@ public class MovieBot extends ListenerAdapter
             int year = releaseDate.length() >=4 ? Integer.parseInt(releaseDate.substring(0,4)) : 0;
             String id = movie.get("id").getAsString();
 
-            menu.addOption(title + "(" + year + ")", id);
+            menu.addOption(title + " (" + year + ")", id);
         }
 
         event.getHook()
@@ -346,6 +900,10 @@ public class MovieBot extends ListenerAdapter
      */
     @Override
     public void onStringSelectInteraction(StringSelectInteractionEvent event){
+        String id = event.getComponentId();
+        if (!id.equals("remove-movie-select") && !id.equals("movie_select")) {
+            return;
+        }
 
         event.deferReply().setEphemeral(true).queue();
 
@@ -356,11 +914,8 @@ public class MovieBot extends ListenerAdapter
             return;
         }
 
-        String id = event.getComponentId();
-
         if (id.equals("remove-movie-select")) {
 
-            // Payload looks like: "remove:7"
             String raw = event.getValues().getFirst();
             int index = Integer.parseInt(raw.replace("remove:", ""));
 
@@ -374,12 +929,16 @@ public class MovieBot extends ListenerAdapter
             Movie movie = movies.get(index);
             deleteScheduledEventIfPresent(movie, guild); //remove scheduled event before deleting movie
             storage.removeMovie(movie);
+            resyncScheduledEvents(guild);
 
-            event.getHook().sendMessage("🗑Removed **" + movie.getTitle() + "**.").setEphemeral(true).queue();
+            event.getHook().sendMessage("Removed **" + movie.getTitle() + "**.").setEphemeral(true).queue();
             return;
         }
 
-        if (!id.equals("movie_select")) return;
+        if(storage.getMovies().size() >= maxMovies){
+            event.getHook().sendMessage("Maximum number of movies are scheduled. Please try again later.").setEphemeral(true).queue();
+            return;
+        }
 
         String selectedMovieId = event.getValues().getFirst();
 
@@ -392,6 +951,18 @@ public class MovieBot extends ListenerAdapter
         }
 
         Movie m = buildMovieFromTmdb(movieJson);
+
+        boolean exists = storage.getMovies().stream()
+                .anyMatch(existing ->
+                        existing.getTitle().equalsIgnoreCase(m.getTitle()) &&
+                                existing.getYear() == m.getYear()
+                );
+
+        if (exists) {
+            event.getHook().sendMessage("That movie is already in the list.").queue();
+            return;
+        }
+
         addMovieAndSchedule(m, guild);
 
         event.getHook().sendMessage("Added **" + m.getTitle() + "** (" + m.getYear() + ") to the list!").setEphemeral(true).queue();
@@ -448,18 +1019,20 @@ public class MovieBot extends ListenerAdapter
         return eb.build();
     }
 
-    // Build prev/next buttons for a given current page. Returns List<Button>
+    // Build prev/next/refresh buttons for a given current page.
     private List<Button> buildPageButtons(int currentPage) {
         var movies = storage.getMovies();
         int totalPages = computeTotalPages(movies);
 
-        Button prev = Button.primary("movie_page_prev_" + currentPage, "◀ Previous")
+        Button prev = Button.primary("movie_page_prev_" + currentPage, "Previous")
                 .withDisabled(currentPage == 0);
 
-        Button next = Button.primary("movie_page_next_" + currentPage, "Next ▶")
+        Button next = Button.primary("movie_page_next_" + currentPage, "Next")
                 .withDisabled(currentPage >= totalPages - 1);
 
-        return List.of(prev, next);
+        Button refresh = Button.secondary("movie_page_refresh_" + currentPage, "Refresh");
+
+        return List.of(prev, next, refresh);
     }
 
     /**
@@ -475,23 +1048,26 @@ public class MovieBot extends ListenerAdapter
         if (!id.startsWith("movie_page_")) return;
 
         // Extract type and page:
-        // movie_page_prev_2  → ["movie","page","prev","2"]
+        // movie_page_refresh_2 -> ["movie","page","refresh","2"]
         String[] parts = id.split("_");
-        String action = parts[2];         // "prev" or "next"
+        String action = parts[2];
         int currentPage = Integer.parseInt(parts[3]);
 
         var movies = storage.getMovies();
         int totalPages = computeTotalPages(movies);
 
-        int newPage = action.equals("prev")
-                ? Math.max(0, currentPage - 1)
-                : Math.min(totalPages - 1, currentPage + 1);
+        int newPage = switch (action) {
+            case "prev" -> Math.max(0, currentPage - 1);
+            case "next" -> Math.min(totalPages - 1, currentPage + 1);
+            case "refresh" -> Math.min(currentPage, totalPages - 1);
+            default -> currentPage;
+        };
 
         var embed = buildMovieListEmbed(newPage);
         var buttons = buildPageButtons(newPage);
 
         event.editMessageEmbeds(embed)
-                .setComponents(ActionRow.of(buttons.get(0), buttons.get(1)))
+                .setComponents(ActionRow.of(buttons.get(0), buttons.get(1), buttons.get(2)))
                 .queue();
     }
 
@@ -504,19 +1080,75 @@ public class MovieBot extends ListenerAdapter
 
     private void addMovieAndSchedule(Movie movie, Guild guild) {
         storage.addMovie(movie);
+        resyncScheduledEvents(guild);
+    }
 
+    private void resyncScheduledEvents(Guild guild) {
         if (guild == null) {
             return;
         }
 
-        OffsetDateTime start =
-                scheduler.findNextAvailableSlot(movie.getRuntimeMinutes(), movie, guild);
+        scheduler.resyncAllEvents(guild, storage.getMovies());
+    }
 
-        if (start != null) {
-            OffsetDateTime end =
-                    start.plusMinutes(movie.getRuntimeMinutes() +EVENT_BUFFER_MINUTES);
-            scheduler.createDiscordEvent(guild, movie, start, end);
+    private void refreshSchedulerSlots() {
+        scheduler.setSlots(slotStorage.getSlots());
+    }
+
+    private boolean isValidMovieIndex(int index, List<Movie> movies) {
+        return index >= 0 && index < movies.size();
+    }
+
+    private MovieScheduler.WeeklySlot parseSlotOptions(SlashCommandInteractionEvent event) {
+        String dayText = Objects.requireNonNull(event.getOption("day")).getAsString();
+        String timeText = Objects.requireNonNull(event.getOption("time")).getAsString();
+        boolean longAllowed = Objects.requireNonNull(event.getOption("long_allowed")).getAsBoolean();
+
+        DayOfWeek day;
+        try {
+            day = parseDayOfWeek(dayText);
+        } catch (IllegalArgumentException e) {
+            event.reply("Invalid day. Use a weekday like `sunday`, `monday`, or `thu`.")
+                    .setEphemeral(true)
+                    .queue();
+            return null;
         }
+
+        LocalTime time;
+        try {
+            time = LocalTime.parse(timeText);
+        } catch (DateTimeParseException e) {
+            event.reply("Invalid time. Use 24-hour `HH:mm` format, for example `19:45`.")
+                    .setEphemeral(true)
+                    .queue();
+            return null;
+        }
+
+        return new MovieScheduler.WeeklySlot(day, time, longAllowed);
+    }
+
+    private DayOfWeek parseDayOfWeek(String value) {
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "monday", "mon" -> DayOfWeek.MONDAY;
+            case "tuesday", "tue", "tues" -> DayOfWeek.TUESDAY;
+            case "wednesday", "wed" -> DayOfWeek.WEDNESDAY;
+            case "thursday", "thu", "thur", "thurs" -> DayOfWeek.THURSDAY;
+            case "friday", "fri" -> DayOfWeek.FRIDAY;
+            case "saturday", "sat" -> DayOfWeek.SATURDAY;
+            case "sunday", "sun" -> DayOfWeek.SUNDAY;
+            default -> throw new IllegalArgumentException("Unknown day: " + value);
+        };
+    }
+
+    private String formatSlot(MovieScheduler.WeeklySlot slot) {
+        return formatDay(slot.day()) + " " + slot.time() +
+                " - long movies " + (slot.longAllowed() ? "allowed" : "not allowed");
+    }
+
+    private String formatDay(DayOfWeek day) {
+        String name = day.name().toLowerCase(Locale.ROOT);
+        return Character.toUpperCase(name.charAt(0)) + name.substring(1);
     }
 
     private Movie buildMovieFromTmdb(JsonObject movieJson) {
@@ -534,7 +1166,12 @@ public class MovieBot extends ListenerAdapter
                 ? "https://image.tmdb.org/t/p/w500" + movieJson.get("poster_path").getAsString()
                 : null;
 
-        int runtime = tmdb.getRuntime(movieJson.get("id").getAsInt());
+        int runtime = 0;
+        try {
+            runtime = tmdb.getRuntime(movieJson.get("id").getAsInt());
+        }catch (Exception e){
+            System.err.println("Failed to fetch runtime.");
+        }
 
         return new Movie(title, year, poster, runtime);
     }
@@ -543,6 +1180,27 @@ public class MovieBot extends ListenerAdapter
         if (event.getGuild() == null) {
             event.getHook()
                     .sendMessage("This command can only be used inside a server.")
+                    .setEphemeral(true)
+                    .queue();
+            return false;
+        }
+        return true;
+    }
+
+    private boolean requireGuildForReply(SlashCommandInteractionEvent event) {
+        if (event.getGuild() == null) {
+            event.reply("This command can only be used inside a server.")
+                    .setEphemeral(true)
+                    .queue();
+            return false;
+        }
+        return true;
+    }
+
+    private boolean requireAdmin(SlashCommandInteractionEvent event) {
+        var member = event.getMember();
+        if (member == null || !member.hasPermission(Permission.ADMINISTRATOR)) {
+            event.reply("You don't have permission to use this command.")
                     .setEphemeral(true)
                     .queue();
             return false;

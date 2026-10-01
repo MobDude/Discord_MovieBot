@@ -1,6 +1,8 @@
 # Environment / secrets
 .env
 movies.json
+slots.json
+breaks.json
 
 # Maven target folder
 /target

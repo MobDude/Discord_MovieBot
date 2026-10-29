@@ -64,6 +64,9 @@ public class MovieBot extends ListenerAdapter
 
     private int maxMovies = 16;
 
+    private final Map<String, ManualMovieContext> pendingManualMovies = new HashMap<>();
+
+    private record ManualMovieContext(LocalDate date, LocalTime time, Integer position) {}
 
     public MovieBot(String tmdbKey) {
         this.tmdb = new TMDb(tmdbKey);
@@ -946,6 +949,7 @@ public class MovieBot extends ListenerAdapter
 
         // If multiple results, store temporary context or handle via selection menu
         // (Note: For multi-result dropdown selection on manual movies, you can store pending inputs or pass metadata through custom select IDs if needed).
+        pendingManualMovies.put(event.getUser().getId(), new ManualMovieContext(date, time, position));
         sendMovieSelectionMenu(event, results, name);
     }
 
@@ -1015,6 +1019,59 @@ public class MovieBot extends ListenerAdapter
             return;
         }
 
+        if (id.equals("movie_select")) {
+            // Check if this was triggered from a manual movie addition
+            ManualMovieContext manualContext = pendingManualMovies.remove(event.getUser().getId());
+
+            String selectedMovieId = event.getValues().getFirst();
+            JsonObject movieJson = fetchMovieById(selectedMovieId);
+
+            if (movieJson == null) {
+                event.getHook().sendMessage("Could not load movie data.").setEphemeral(true).queue();
+                return;
+            }
+
+            Movie m = buildMovieFromTmdb(movieJson);
+
+            boolean exists = storage.getMovies().stream()
+                    .anyMatch(existing ->
+                            existing.getTitle().equalsIgnoreCase(m.getTitle()) &&
+                                    existing.getYear() == m.getYear()
+                    );
+
+            if (exists) {
+                event.getHook().sendMessage("That movie is already in the list.").queue();
+                return;
+            }
+
+            if (manualContext != null) {
+                // It's a manual movie selection — bypass maxMovies and use the saved context!
+                scheduler.scheduleManualMovie(guild, m, manualContext.date(), manualContext.time());
+
+                boolean inserted = storage.insertMovie(m, manualContext.position());
+                if (!inserted) {
+                    event.getHook().sendMessage("Invalid position specified for the movie list.").setEphemeral(true).queue();
+                    return;
+                }
+
+                resyncScheduledEvents(guild);
+                event.getHook().sendMessage(
+                        String.format("Added manual movie **%s** (%d) for **%s at %s**!",
+                                m.getTitle(), m.getYear(), manualContext.date(), manualContext.time())
+                ).setEphemeral(true).queue();
+            } else {
+                // Regular movie selection (enforces maxMovies)
+                if (storage.getMovies().size() >= maxMovies) {
+                    event.getHook().sendMessage("Maximum number of movies are scheduled. Please try again later.").setEphemeral(true).queue();
+                    return;
+                }
+
+                addMovieAndSchedule(m, guild);
+                event.getHook().sendMessage("Added **" + m.getTitle() + "** (" + m.getYear() + ") to the list!").setEphemeral(true).queue();
+            }
+            return;
+        }
+        
         if (id.equals("remove-movie-select")) {
 
             String raw = event.getValues().getFirst();

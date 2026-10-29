@@ -956,16 +956,20 @@ public class MovieBot extends ListenerAdapter
     private void finalizeManualMovieAddition(SlashCommandInteractionEvent event, Movie movie, LocalDate date, LocalTime time, Integer position) {
         Guild guild = event.getGuild();
 
-        // Set manual start time on the movie object
-        //scheduler.scheduleManualMovie(guild, movie, date, time); - remove to prevent duplication, will be called in resync
+        // 1. Set the manual start time on the movie object directly
+        ZonedDateTime start = ZonedDateTime.of(date, time, ZoneId.of("America/Toronto")); // or use your scheduler ZONE constant
+        int runtime = movie.getRuntimeMinutes() > 0 ? movie.getRuntimeMinutes() : 120;
 
-        // Insert into storage bypassing maxMovies limit
+        movie.setManualStartTime(start.toOffsetDateTime());
+
+        // 2. Insert into storage bypassing maxMovies limit
         boolean inserted = storage.insertMovie(movie, position);
         if (!inserted) {
             event.getHook().sendMessage("Invalid position specified for the movie list.").setEphemeral(true).queue();
             return;
         }
 
+        // 3. Let resync handle creating the Discord event cleanly once
         resyncScheduledEvents(guild);
 
         event.getHook().sendMessage(

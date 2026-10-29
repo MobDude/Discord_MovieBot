@@ -124,7 +124,7 @@ public class MovieBot extends ListenerAdapter
                                 .addOption(OptionType.INTEGER, "year", "Release year", false)
                                 .addOption(OptionType.STRING, "date", "Date in YYYY-MM-DD format", true)
                                 .addOption(OptionType.STRING, "time", "24-hour time in HH:mm format, for example 19:45", true)
-                                .addOption(OptionType.INTEGER, "position", "Position in the movie list", true),
+                                .addOption(OptionType.INTEGER, "position", "Position in the movie list", false),
 
                         //remove movie slash command
                         Commands.slash("removemovie", "Removes a movie from the list")

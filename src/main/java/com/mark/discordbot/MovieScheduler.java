@@ -40,23 +40,21 @@ public class MovieScheduler {
 
         for (Movie movie : movies) {
             if (movie.getManualStartTime() != null) {
-
                 OffsetDateTime start = movie.getManualStartTime();
 
                 int duration = movie.getRuntimeMinutes() > 0
                         ? movie.getRuntimeMinutes()
                         : DEFAULT_RUNTIME;
 
-                OffsetDateTime end =
-                        start.plusMinutes(duration + BUFFER_MINUTES);
+                OffsetDateTime end = start.plusMinutes(duration + BUFFER_MINUTES);
 
                 manageDiscordEvent(guild, movie, start, end);
 
-                ZonedDateTime manualStart =
-                        movie.getManualStartTime().atZoneSameInstant(ZONE);
-
-                if (manualStart.isAfter(currentSearchPointer)) {
-                    currentSearchPointer = manualStart.plusMinutes(1);
+                // Advance currentSearchPointer to ensure subsequent movies
+                // schedule after this manual movie's timeframe
+                ZonedDateTime manualEnd = end.atZoneSameInstant(ZONE);
+                if (manualEnd.isAfter(currentSearchPointer)) {
+                    currentSearchPointer = manualEnd.plusMinutes(1);
                 }
 
             } else {
@@ -68,8 +66,6 @@ public class MovieScheduler {
 
                     manageDiscordEvent(guild, movie, start, end);
 
-                    // CRITICAL: Move the pointer to the START of this movie so the
-                    // NEXT movie in the list finds the NEXT available slot after this one.
                     currentSearchPointer = start.atZoneSameInstant(ZONE).plusMinutes(1);
                 }
             }
@@ -167,7 +163,7 @@ public class MovieScheduler {
         return Collections.unmodifiableSet(skippedDates);
     }
 
-    public static void scheduleManualMovie(Guild guild, Movie movie, LocalDate date, LocalTime time) {
+    public void scheduleManualMovie(Guild guild, Movie movie, LocalDate date, LocalTime time) {
         ZonedDateTime start = ZonedDateTime.of(date, time, ZONE);
 
         int runtime = movie.getRuntimeMinutes() > 0

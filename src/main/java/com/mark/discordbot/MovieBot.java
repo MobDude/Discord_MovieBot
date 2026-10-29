@@ -122,9 +122,9 @@ public class MovieBot extends ListenerAdapter
                         Commands.slash("addmanualmovie", "Adds a manual movie to the movie list that ignores timeslots and list maximums.")
                                 .addOption(OptionType.STRING, "name", "Movie title", true)
                                 .addOption(OptionType.INTEGER, "year", "Release year", false)
-                                .addOption(OptionType.STRING, "day", "Day of week, for example sunday or tue", true)
+                                .addOption(OptionType.STRING, "date", "Date in YYYY-MM-DD format", true)
                                 .addOption(OptionType.STRING, "time", "24-hour time in HH:mm format, for example 19:45", true)
-                                .addOption(OptionType.INTEGER, "position", "24-hour time in HH:mm format, for example 19:45", true),
+                                .addOption(OptionType.INTEGER, "position", "Position in the movie list", true),
 
                         //remove movie slash command
                         Commands.slash("removemovie", "Removes a movie from the list")
@@ -902,19 +902,31 @@ public class MovieBot extends ListenerAdapter
         Integer year = event.getOption("year") != null ? Objects.requireNonNull(event.getOption("year")).getAsInt() : null;
         String dateText = Objects.requireNonNull(event.getOption("date")).getAsString();
         String timeText = Objects.requireNonNull(event.getOption("time")).getAsString();
-        Integer position = event.getOption("position") != null? Objects.requireNonNull(event.getOption("position")).getAsInt() : null;
+        Integer position = event.getOption("position") != null ? Objects.requireNonNull(event.getOption("position")).getAsInt() : null;
 
-        if (!requireGuild(event)) return;
+        LocalDate date;
+        try {
+            date = LocalDate.parse(dateText);
+        } catch (DateTimeParseException e) {
+            event.getHook().sendMessage("Invalid date format. Use `YYYY-MM-DD`, for example `2026-10-06`.").setEphemeral(true).queue();
+            return;
+        }
+
+        LocalTime time;
+        try {
+            time = LocalTime.parse(timeText);
+        } catch (DateTimeParseException e) {
+            event.getHook().sendMessage("Invalid time format. Use 24-hour `HH:mm` format, for example `19:45`.").setEphemeral(true).queue();
+            return;
+        }
 
         JsonArray results = tmdb.searchMovies(name, year);
-
-        if (results == null || results.isEmpty()){
+        if (results == null || results.isEmpty()) {
             event.getHook().sendMessage("No movies found with that name.").setEphemeral(true).queue();
             return;
         }
 
-        if (results.size() == 1){
-
+        if (results.size() == 1) {
             Movie movie = buildMovieFromTmdb(results.get(0).getAsJsonObject());
 
             boolean exists = storage.getMovies().stream()
@@ -928,14 +940,34 @@ public class MovieBot extends ListenerAdapter
                 return;
             }
 
-            addMovieAndSchedule(movie, event.getGuild());
-
-            event.getHook().sendMessage("Added **" + movie.getTitle() + "** (" + movie.getYear() + ")").setEphemeral(true).queue();
+            finalizeManualMovieAddition(event, movie, date, time, position);
             return;
-
         }
 
+        // If multiple results, store temporary context or handle via selection menu
+        // (Note: For multi-result dropdown selection on manual movies, you can store pending inputs or pass metadata through custom select IDs if needed).
         sendMovieSelectionMenu(event, results, name);
+    }
+
+    private void finalizeManualMovieAddition(SlashCommandInteractionEvent event, Movie movie, LocalDate date, LocalTime time, Integer position) {
+        Guild guild = event.getGuild();
+
+        // Set manual start time on the movie object
+        scheduler.scheduleManualMovie(guild, movie, date, time);
+
+        // Insert into storage bypassing maxMovies limit
+        boolean inserted = storage.insertMovie(movie, position);
+        if (!inserted) {
+            event.getHook().sendMessage("Invalid position specified for the movie list.").setEphemeral(true).queue();
+            return;
+        }
+
+        resyncScheduledEvents(guild);
+
+        event.getHook().sendMessage(
+                String.format("Added manual movie **%s** (%d) for **%s at %s**!",
+                        movie.getTitle(), movie.getYear(), date, time)
+        ).setEphemeral(true).queue();
     }
 
     private void sendMovieSelectionMenu(SlashCommandInteractionEvent event, JsonArray results, String query){

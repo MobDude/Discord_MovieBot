@@ -957,7 +957,7 @@ public class MovieBot extends ListenerAdapter
         Guild guild = event.getGuild();
 
         // Set manual start time on the movie object
-        scheduler.scheduleManualMovie(guild, movie, date, time);
+        //scheduler.scheduleManualMovie(guild, movie, date, time); - remove to prevent duplication, will be called in resync
 
         // Insert into storage bypassing maxMovies limit
         boolean inserted = storage.insertMovie(movie, position);
@@ -1071,7 +1071,7 @@ public class MovieBot extends ListenerAdapter
             }
             return;
         }
-        
+
         if (id.equals("remove-movie-select")) {
 
             String raw = event.getValues().getFirst();

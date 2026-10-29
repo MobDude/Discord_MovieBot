@@ -2,10 +2,13 @@ package com.mark.discordbot;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonSerializer;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.*;
 import java.lang.reflect.Type;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -26,12 +29,19 @@ public class MovieStorage {
     /**
      * Gson instance is configured to be human-readable JSON output.
      */
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Gson GSON = new GsonBuilder()
+            .setPrettyPrinting()
+            .registerTypeAdapter(OffsetDateTime.class, (JsonSerializer<OffsetDateTime>) (src, typeOfSrc, context) ->
+                    new com.google.gson.JsonPrimitive(src.toString()))
+            .registerTypeAdapter(OffsetDateTime.class, (JsonDeserializer<OffsetDateTime>) (json, typeOfT, context) ->
+                    OffsetDateTime.parse(json.getAsString()))
+            .create();
 
     /**
      * In-memory list of stored movies.
      */
     private final List<Movie> movies;
+
 
     /**
      * Constructs a {@code MovieStorage} instance and loads any existing movies from persistent storage.
@@ -130,6 +140,22 @@ public class MovieStorage {
         } catch (IOException e) {
             return new ArrayList<>();
         }
+    }
+
+    public synchronized boolean insertMovie(Movie movie, Integer position) {
+        if (position == null) {
+            movies.add(movie);
+        } else {
+            // User-facing positions are 1-based.
+            if (position < 1 || position > movies.size() + 1) {
+                return false;
+            }
+
+            movies.add(position - 1, movie);
+        }
+
+        save();
+        return true;
     }
 
 }

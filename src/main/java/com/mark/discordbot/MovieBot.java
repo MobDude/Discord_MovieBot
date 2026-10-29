@@ -22,9 +22,7 @@ import net.dv8tion.jda.api.entities.MessageEmbed;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.DayOfWeek;
-import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.*;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 
@@ -66,6 +64,9 @@ public class MovieBot extends ListenerAdapter
 
     private int maxMovies = 16;
 
+    private final Map<String, ManualMovieContext> pendingManualMovies = new HashMap<>();
+
+    private record ManualMovieContext(LocalDate date, LocalTime time, Integer position) {}
 
     public MovieBot(String tmdbKey) {
         this.tmdb = new TMDb(tmdbKey);
@@ -119,6 +120,14 @@ public class MovieBot extends ListenerAdapter
                         Commands.slash("addmovie", "Adds a movie to the list")
                                 .addOption(OptionType.STRING, "name", "Movie title", true)
                                 .addOption(OptionType.INTEGER, "year", "Release year", false),
+
+                        //add manual movie slash command
+                        Commands.slash("addmanualmovie", "Adds a manual movie to the movie list that ignores timeslots and list maximums.")
+                                .addOption(OptionType.STRING, "name", "Movie title", true)
+                                .addOption(OptionType.STRING, "date", "Date in YYYY-MM-DD format", true)
+                                .addOption(OptionType.STRING, "time", "24-hour time in HH:mm format, for example 19:45", true)
+                                .addOption(OptionType.INTEGER, "year", "Release year", false)
+                                .addOption(OptionType.INTEGER, "position", "Position in the movie list", false),
 
                         //remove movie slash command
                         Commands.slash("removemovie", "Removes a movie from the list")
@@ -254,6 +263,10 @@ public class MovieBot extends ListenerAdapter
         switch (event.getName()){
             case "addmovie":
                 handleAddMovie(event);
+                break;
+
+            case "addmanualmovie":
+                handleAddManualMovie(event);
                 break;
 
             case "removemovie":
@@ -503,6 +516,19 @@ public class MovieBot extends ListenerAdapter
                         **Options:**
                         `name` (required) - Movie Title
                         `year` (optional) - Release Year
+                        """, false
+        );
+
+        embed.addField(
+                "/addmanualmovie", """
+                        Adds a manual movie to the movie list that ignores timeslots and list maximums.
+                        
+                        **Options:**
+                        `name` (required) - Movie Title
+                        `year` (optional) - Release Year
+                        `date` (required) - Date the movie should be watched
+                        `time` (required) - Time the movie should be watched
+                        `position` (optional) - Position in the movie list
                         """, false
         );
 
@@ -869,6 +895,89 @@ public class MovieBot extends ListenerAdapter
                 .queue();
     }
 
+    private void handleAddManualMovie(SlashCommandInteractionEvent event){
+        event.deferReply().setEphemeral(true).queue();
+
+        if (!requireAdmin(event)) return;
+        if (!requireGuildForReply(event)) return;
+
+        String name = Objects.requireNonNull(event.getOption("name")).getAsString();
+        Integer year = event.getOption("year") != null ? Objects.requireNonNull(event.getOption("year")).getAsInt() : null;
+        String dateText = Objects.requireNonNull(event.getOption("date")).getAsString();
+        String timeText = Objects.requireNonNull(event.getOption("time")).getAsString();
+        Integer position = event.getOption("position") != null ? Objects.requireNonNull(event.getOption("position")).getAsInt() : null;
+
+        LocalDate date;
+        try {
+            date = LocalDate.parse(dateText);
+        } catch (DateTimeParseException e) {
+            event.getHook().sendMessage("Invalid date format. Use `YYYY-MM-DD`, for example `2026-10-06`.").setEphemeral(true).queue();
+            return;
+        }
+
+        LocalTime time;
+        try {
+            time = LocalTime.parse(timeText);
+        } catch (DateTimeParseException e) {
+            event.getHook().sendMessage("Invalid time format. Use 24-hour `HH:mm` format, for example `19:45`.").setEphemeral(true).queue();
+            return;
+        }
+
+        JsonArray results = tmdb.searchMovies(name, year);
+        if (results == null || results.isEmpty()) {
+            event.getHook().sendMessage("No movies found with that name.").setEphemeral(true).queue();
+            return;
+        }
+
+        if (results.size() == 1) {
+            Movie movie = buildMovieFromTmdb(results.get(0).getAsJsonObject());
+
+            boolean exists = storage.getMovies().stream()
+                    .anyMatch(existing ->
+                            existing.getTitle().equalsIgnoreCase(movie.getTitle()) &&
+                                    existing.getYear() == movie.getYear()
+                    );
+
+            if (exists) {
+                event.getHook().sendMessage("That movie is already in the list.").queue();
+                return;
+            }
+
+            finalizeManualMovieAddition(event, movie, date, time, position);
+            return;
+        }
+
+        // If multiple results, store temporary context or handle via selection menu
+        // (Note: For multi-result dropdown selection on manual movies, you can store pending inputs or pass metadata through custom select IDs if needed).
+        pendingManualMovies.put(event.getUser().getId(), new ManualMovieContext(date, time, position));
+        sendMovieSelectionMenu(event, results, name);
+    }
+
+    private void finalizeManualMovieAddition(SlashCommandInteractionEvent event, Movie movie, LocalDate date, LocalTime time, Integer position) {
+        Guild guild = event.getGuild();
+
+        // 1. Set the manual start time on the movie object directly
+        ZonedDateTime start = ZonedDateTime.of(date, time, ZoneId.of("America/Toronto")); // or use your scheduler ZONE constant
+        int runtime = movie.getRuntimeMinutes() > 0 ? movie.getRuntimeMinutes() : 120;
+
+        movie.setManualStartTime(start.toOffsetDateTime());
+
+        // 2. Insert into storage bypassing maxMovies limit
+        boolean inserted = storage.insertMovie(movie, position);
+        if (!inserted) {
+            event.getHook().sendMessage("Invalid position specified for the movie list.").setEphemeral(true).queue();
+            return;
+        }
+
+        // 3. Let resync handle creating the Discord event cleanly once
+        resyncScheduledEvents(guild);
+
+        event.getHook().sendMessage(
+                String.format("Added manual movie **%s** (%d) for **%s at %s**!",
+                        movie.getTitle(), movie.getYear(), date, time)
+        ).setEphemeral(true).queue();
+    }
+
     private void sendMovieSelectionMenu(SlashCommandInteractionEvent event, JsonArray results, String query){
         StringSelectMenu.Builder menu = StringSelectMenu.create("movie_select").setPlaceholder("Select the correct movie");
 
@@ -911,6 +1020,59 @@ public class MovieBot extends ListenerAdapter
         Guild guild = event.getGuild();
         if (guild == null){
             event.getHook().sendMessage("This action can only be used inside a server.").setEphemeral(true).queue();
+            return;
+        }
+
+        if (id.equals("movie_select")) {
+            // Check if this was triggered from a manual movie addition
+            ManualMovieContext manualContext = pendingManualMovies.remove(event.getUser().getId());
+
+            String selectedMovieId = event.getValues().getFirst();
+            JsonObject movieJson = fetchMovieById(selectedMovieId);
+
+            if (movieJson == null) {
+                event.getHook().sendMessage("Could not load movie data.").setEphemeral(true).queue();
+                return;
+            }
+
+            Movie m = buildMovieFromTmdb(movieJson);
+
+            boolean exists = storage.getMovies().stream()
+                    .anyMatch(existing ->
+                            existing.getTitle().equalsIgnoreCase(m.getTitle()) &&
+                                    existing.getYear() == m.getYear()
+                    );
+
+            if (exists) {
+                event.getHook().sendMessage("That movie is already in the list.").queue();
+                return;
+            }
+
+            if (manualContext != null) {
+                // It's a manual movie selection — bypass maxMovies and use the saved context!
+                scheduler.scheduleManualMovie(guild, m, manualContext.date(), manualContext.time());
+
+                boolean inserted = storage.insertMovie(m, manualContext.position());
+                if (!inserted) {
+                    event.getHook().sendMessage("Invalid position specified for the movie list.").setEphemeral(true).queue();
+                    return;
+                }
+
+                resyncScheduledEvents(guild);
+                event.getHook().sendMessage(
+                        String.format("Added manual movie **%s** (%d) for **%s at %s**!",
+                                m.getTitle(), m.getYear(), manualContext.date(), manualContext.time())
+                ).setEphemeral(true).queue();
+            } else {
+                // Regular movie selection (enforces maxMovies)
+                if (storage.getMovies().size() >= maxMovies) {
+                    event.getHook().sendMessage("Maximum number of movies are scheduled. Please try again later.").setEphemeral(true).queue();
+                    return;
+                }
+
+                addMovieAndSchedule(m, guild);
+                event.getHook().sendMessage("Added **" + m.getTitle() + "** (" + m.getYear() + ") to the list!").setEphemeral(true).queue();
+            }
             return;
         }
 

@@ -2,6 +2,7 @@ package com.mark.discordbot;
 
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.channel.concrete.VoiceChannel;
+
 import java.time.*;
 import java.util.*;
 
@@ -11,17 +12,18 @@ public class MovieScheduler {
     private static final ZoneId ZONE = ZoneId.of("America/Toronto");
     private static final String MOVIE_CHANNEL_NAME = "🍿movie-theatre";
 
-    public record WeeklySlot(DayOfWeek day, LocalTime time, boolean longAllowed) {}
+    public record WeeklySlot(DayOfWeek day, LocalTime time, boolean longAllowed) {
+    }
 
     private List<WeeklySlot> slots = defaultSlots();
     private final Set<LocalDate> skippedDates = new HashSet<>();
 
     public static List<WeeklySlot> defaultSlots() {
         return new ArrayList<>(List.of(
-            new WeeklySlot(DayOfWeek.SUNDAY, LocalTime.of(18, 30), true),
-            new WeeklySlot(DayOfWeek.SUNDAY, LocalTime.of(21, 0), false),
-            new WeeklySlot(DayOfWeek.TUESDAY, LocalTime.of(19, 45), false),
-            new WeeklySlot(DayOfWeek.THURSDAY, LocalTime.of(19, 45), false)
+                new WeeklySlot(DayOfWeek.SUNDAY, LocalTime.of(18, 30), true),
+                new WeeklySlot(DayOfWeek.SUNDAY, LocalTime.of(21, 0), false),
+                new WeeklySlot(DayOfWeek.TUESDAY, LocalTime.of(19, 45), false),
+                new WeeklySlot(DayOfWeek.THURSDAY, LocalTime.of(19, 45), false)
         ));
     }
 
@@ -37,17 +39,35 @@ public class MovieScheduler {
         ZonedDateTime currentSearchPointer = ZonedDateTime.now(ZONE);
 
         for (Movie movie : movies) {
-            OffsetDateTime start = findNextSlotForMovie(movie, currentSearchPointer);
+            if (movie.getManualStartTime() != null) {
+                OffsetDateTime start = movie.getManualStartTime();
 
-            if (start != null) {
-                int duration = movie.getRuntimeMinutes() > 0 ? movie.getRuntimeMinutes() : DEFAULT_RUNTIME;
+                int duration = movie.getRuntimeMinutes() > 0
+                        ? movie.getRuntimeMinutes()
+                        : DEFAULT_RUNTIME;
+
                 OffsetDateTime end = start.plusMinutes(duration + BUFFER_MINUTES);
 
                 manageDiscordEvent(guild, movie, start, end);
 
-                // CRITICAL: Move the pointer to the START of this movie so the
-                // NEXT movie in the list finds the NEXT available slot after this one.
-                currentSearchPointer = start.atZoneSameInstant(ZONE).plusMinutes(1);
+                // Advance currentSearchPointer to ensure subsequent movies
+                // schedule after this manual movie's timeframe
+                ZonedDateTime manualEnd = end.atZoneSameInstant(ZONE);
+                if (manualEnd.isAfter(currentSearchPointer)) {
+                    currentSearchPointer = manualEnd.plusMinutes(1);
+                }
+
+            } else {
+                OffsetDateTime start = findNextSlotForMovie(movie, currentSearchPointer);
+
+                if (start != null) {
+                    int duration = movie.getRuntimeMinutes() > 0 ? movie.getRuntimeMinutes() : DEFAULT_RUNTIME;
+                    OffsetDateTime end = start.plusMinutes(duration + BUFFER_MINUTES);
+
+                    manageDiscordEvent(guild, movie, start, end);
+
+                    currentSearchPointer = start.atZoneSameInstant(ZONE).plusMinutes(1);
+                }
             }
         }
     }
@@ -67,7 +87,7 @@ public class MovieScheduler {
                 LocalDate occurrenceDate = occurrence.atZoneSameInstant(ZONE).toLocalDate();
 
                 //This movie night has been skipped
-                if (skippedDates.contains(occurrenceDate)){
+                if (skippedDates.contains(occurrenceDate)) {
                     continue;
                 }
 
@@ -127,7 +147,7 @@ public class MovieScheduler {
                 .orElse(null);
     }
 
-    public void addBreak(LocalDate date){
+    public void addBreak(LocalDate date) {
         skippedDates.add(date);
     }
 
@@ -142,4 +162,23 @@ public class MovieScheduler {
     public Set<LocalDate> getBreaks() {
         return Collections.unmodifiableSet(skippedDates);
     }
+
+    public void scheduleManualMovie(Guild guild, Movie movie, LocalDate date, LocalTime time) {
+        ZonedDateTime start = ZonedDateTime.of(date, time, ZONE);
+
+        int runtime = movie.getRuntimeMinutes() > 0
+                ? movie.getRuntimeMinutes()
+                : DEFAULT_RUNTIME;
+
+        OffsetDateTime startTime = start.toOffsetDateTime();
+        OffsetDateTime endTime = start
+                .plusMinutes(runtime + BUFFER_MINUTES)
+                .toOffsetDateTime();
+
+        movie.setManualStartTime(startTime);
+
+        manageDiscordEvent(guild, movie, startTime, endTime);
+    }
+
+
 }

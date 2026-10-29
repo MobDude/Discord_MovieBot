@@ -132,4 +132,20 @@ public class MovieStorage {
         }
     }
 
+    public synchronized boolean insertMovie(Movie movie, Integer position) {
+        if (position == null) {
+            movies.add(movie);
+        } else {
+            // User-facing positions are 1-based.
+            if (position < 1 || position > movies.size() + 1) {
+                return false;
+            }
+
+            movies.add(position - 1, movie);
+        }
+
+        save();
+        return true;
+    }
+
 }

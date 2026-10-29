@@ -1,5 +1,7 @@
 package com.mark.discordbot;
 
+import java.time.OffsetDateTime;
+
 /**
  * Represents a movie and its associated Discord event data.
  */
@@ -10,6 +12,7 @@ public class Movie {
     private final String posterURL;
     private final int runtimeMinutes;
     private Long scheduledEventId; // Mutable: set after Discord event creation
+    private OffsetDateTime manualStartTime;
 
     public Movie(String title, int year, String posterURL, int runtimeMinutes) {
         this.title = title;
@@ -45,5 +48,17 @@ public class Movie {
         int hours = runtimeMinutes / 60;
         int minutes = runtimeMinutes % 60;
         return (hours > 0) ? String.format("%dh %dm", hours, minutes) : minutes + "m";
+    }
+
+    public void setManualStartTime(OffsetDateTime startTime){
+        this.manualStartTime = startTime;
+    }
+
+    public OffsetDateTime getManualStartTime(){
+        return manualStartTime;
+    }
+
+    public boolean isManuallyScheduled(){
+        return manualStartTime != null;
     }
 }

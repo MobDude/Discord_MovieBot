@@ -121,9 +121,9 @@ public class MovieBot extends ListenerAdapter
                         //add manual movie slash command
                         Commands.slash("addmanualmovie", "Adds a manual movie to the movie list that ignores timeslots and list maximums.")
                                 .addOption(OptionType.STRING, "name", "Movie title", true)
-                                .addOption(OptionType.INTEGER, "year", "Release year", false)
                                 .addOption(OptionType.STRING, "date", "Date in YYYY-MM-DD format", true)
                                 .addOption(OptionType.STRING, "time", "24-hour time in HH:mm format, for example 19:45", true)
+                                .addOption(OptionType.INTEGER, "year", "Release year", false)
                                 .addOption(OptionType.INTEGER, "position", "Position in the movie list", false),
 
                         //remove movie slash command
